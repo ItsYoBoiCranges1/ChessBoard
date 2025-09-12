@@ -225,7 +225,6 @@ class Chess{
   enum Mode{
     awaitingMove,
     awaitingPiecePlacement,
-    generateExpectedMoves,
     error
   };
 
@@ -248,10 +247,11 @@ class Chess{
   PieceRegistry pieceRegistry;
   bool validPiece = false;
   Team currentTeam = RED;
-  Mode mode = generateExpectedMoves;
+  Mode mode = awaitingMove;
   std::vector<Point> currentPiecePositions;
   Piece pieceInPlay;
   std::vector<Move> possibleMoves;
+  bool piecePossibleMovesUpdated = false;
 
   bool checkIfPointOccupied(Point point){
     bool pointIsOccupied = false;
@@ -266,7 +266,7 @@ class Chess{
     return pointIsOccupied;
   }
 
-  Piece getPieceAtPoint(Point point){
+  Team getPieceTeamAtPoint(Point point){
     Piece piece;
 
     for(int i = 0; i < this->pieceRegistry.entry.size(); i++){
@@ -276,14 +276,18 @@ class Chess{
       }
     }
 
-    return piece;
+    return piece.team;
   }
 
   struct SquareOcupationState{
+
+    Team team;
+    Point point;
+
     bool occupied = false;
     bool occupiedByFoe = false;
     bool occupiedByFriendly = false;
-    
+
     SquareOcupationState(){}
   };
 
@@ -292,73 +296,154 @@ class Chess{
 
     squareOcupationState.occupied = checkIfPointOccupied(point);
 
-    Team pieceTeamAtPoint = getPieceAtPoint(point).team;
+    if(checkIfPointOccupied(point)){
 
-    if(pieceTeamAtPoint == team){
-      squareOcupationState.occupiedByFriendly = true;
-      squareOcupationState.occupiedByFoe = false;
-    }else{
-      squareOcupationState.occupiedByFriendly = false;
-      squareOcupationState.occupiedByFoe = true;
-    }
+      squareOcupationState.occupied = true;
+
+      Team pieceTeamAtPoint = getPieceTeamAtPoint(point);
+
+      if(pieceTeamAtPoint == team){
+        squareOcupationState.occupiedByFriendly = true;
+        squareOcupationState.occupiedByFoe = false;
+      }else{
+        squareOcupationState.occupiedByFriendly = false;
+        squareOcupationState.occupiedByFoe = true;
+      }
+    }    
 
     return squareOcupationState;
   }
 
-  std::vector<Move> generatePawnMoves(Point position, Team team, bool firstMove){
+  void setPawnMoves(PieceRegistry::Entry& regEntry){
+
+    Piece piece = regEntry.piece;
+    Point position = regEntry.point;
     
     std::vector<Move> moves;
+    std::vector<Point> testPoints;
+    std::vector<SquareOcupationState> squareOcupationState;
 
     
+    if(piece.team == RED){
+      testPoints.push_back(Point(position.x, position.y + 1));
+      testPoints.push_back(Point(position.x + 1, position.y + 1));
+      testPoints.push_back(Point(position.x - 1, position.y + 1));
+      testPoints.push_back(Point(position.x, position.y + 2));      
+    }
 
-    return moves;
+    for(int i = 0; i < testPoints.size(); i++){
+      squareOcupationState.push_back(getSquareState(RED, testPoints[i]));
+    }
+
+    if(!squareOcupationState[0].occupied && testPoints[0].inBounds()){
+      moves.push_back(Move(testPoints[0], NONCAPTURE));
+    }
+
+    if(squareOcupationState[1].occupiedByFoe && testPoints[1].inBounds()){
+      moves.push_back(Move(testPoints[1], CAPTURE));
+    }
+
+    if(squareOcupationState[2].occupiedByFoe && testPoints[2].inBounds()){
+      moves.push_back(Move(testPoints[2], CAPTURE));
+    }
+
+    if(piece.isFirstMove && !squareOcupationState[3].occupied && testPoints[3].inBounds()){
+      moves.push_back(Move(testPoints[3], NONCAPTURE));
+    }
+
+    regEntry.piece.moves = moves;
+  }
+
+  void setPieceMoves(){
+
+    if(this->pieceRegistry.entry.size() > 0){
+        for(int i = 0; i < this->pieceRegistry.entry.size(); i++){
+
+        Team currentPeaceTeam = this->pieceRegistry.entry[i].piece.team;
+        PieceType currentPieceType = this->pieceRegistry.entry[i].piece.type;
+
+        if(this->currentTeam == currentPeaceTeam){
+
+          switch(currentPieceType){
+
+            case PAWN:
+
+              setPawnMoves(this->pieceRegistry.entry[i]);
+
+            break;
+
+            default:
+
+            break;
+          }
+        }
+      }
+    }    
+  }
+
+  void displayPath(CRGB leds[64]){
+    if(this->possibleMoves.size() > 0){
+        for(int i = 0; i < this->possibleMoves.size(); i++){
+
+        int ledAddress = getLedAddress(this->possibleMoves[i].position);
+
+        if(this->possibleMoves[i].type == NONCAPTURE){
+          leds[ledAddress] = CRGB::Green;
+        }else if(this->possibleMoves[i].type == CAPTURE){
+          leds[ledAddress] = CRGB::Red;
+        }
+      }
+      FastLED.show();
+    }
   }
 
   public:
 
-  void process(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous){
+  void process(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous, CRGB leds[64]){
+
+    if(!this->piecePossibleMovesUpdated){//updates possible moves
+
+      setPieceMoves();
+
+      this->piecePossibleMovesUpdated = true;
+    }
 
     this->inputChange = getHallStateArrayDifferences(current, previous);    
 
     if(this->inputChange.size() > 0){
 
-      Chess::SquareState changedPoint = this->inputChange[0];      
+      Chess::SquareState changedPoint = this->inputChange[0];    
 
       switch(this->mode){
-
-        case generateExpectedMoves:
-
-
-
-        break;
 
         case awaitingMove:
 
         this->validPiece = false;
 
-        for(int i = 0; i < this->pieceRegistry.entry.size(); i++){
+        for(int i = 0; i < this->pieceRegistry.entry.size(); i++){//cycle through all piece entries
 
           PieceRegistry::Entry pieceRegistryEntry = this->pieceRegistry.entry[i];
 
-          if( (changedPoint.point == pieceRegistryEntry.point) && (changedPoint.behavior == falling) ){
+          if( (changedPoint.point == pieceRegistryEntry.point)){
 
-            if(this->currentTeam == pieceRegistryEntry.piece.team){
+            if( (pieceRegistryEntry.piece.team == this->currentTeam) && (pieceRegistryEntry.piece.moves.size() > 0) ){
 
               this->pieceInPlay = pieceRegistryEntry.piece;
 
               this->possibleMoves = pieceRegistryEntry.piece.moves;
 
               this->validPiece = true;
+
+              displayPath(leds);
+
+              this->mode = awaitingPiecePlacement;
             }
           }
-        }
-
-        this->mode = awaitingPiecePlacement;
+        }        
 
         break;
 
         case awaitingPiecePlacement:
-
 
         break;
 
@@ -372,7 +457,7 @@ class Chess{
 
     for(int i = 0; i < 64; i++){
       leds[i] = CRGB::Black;
-    }      
+    }
   }
 };
 
@@ -423,11 +508,7 @@ void loop(){
 
   if(previousHallArrayState != currentHallArrayState){
 
-    chess.process(currentHallArrayState, previousHallArrayState);
-
-    chess.setLeds(leds);
-
-    FastLED.show();
+    chess.process(currentHallArrayState, previousHallArrayState, leds);    
 
     previousHallArrayState = currentHallArrayState;
   }
