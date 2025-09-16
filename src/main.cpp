@@ -185,18 +185,24 @@ class Chess{
   };
 
   struct Piece{
-    PieceType type;    
+    int id;
+    PieceType type;
     Team team;
     std::vector<Move> moves;
     bool isFirstMove = true;
 
-    Piece(Team _team, PieceType _type){
+    Piece(int _id, Team _team, PieceType _type){
+      this->id = _id;
       this->team = _team;
       this->type = _type;
     }
 
     Piece(){
 
+    }
+
+    bool operator==(const Piece& other) const{
+      return (this->team == other.team) && (this->type == other.type) && (this->id == other.id);
     }
   };
 
@@ -217,8 +223,8 @@ class Chess{
     std::vector<Entry> entry;
 
     PieceRegistry(){
-      entry.push_back(Entry(Point(2,2), Piece(RED, PAWN)));
-      entry.push_back(Entry(Point(3,3), Piece(BLUE, PAWN)));
+      entry.push_back(Entry(Point(2,2), Piece(0, RED, PAWN)));
+      entry.push_back(Entry(Point(3,3), Piece(1, BLUE, PAWN)));
     }
   };
 
@@ -243,6 +249,7 @@ class Chess{
     return ledArrayPos;
   }
 
+  bool ifSetupComplete = false;
   std::vector<SquareState> inputChange;
   PieceRegistry pieceRegistry;
   bool validPiece = false;
@@ -251,7 +258,7 @@ class Chess{
   std::vector<Point> currentPiecePositions;
   Piece pieceInPlay;
   std::vector<Move> possibleMoves;
-  bool piecePossibleMovesUpdated = false;
+  bool piecePathsUpdated = false;
 
   bool checkIfPointOccupied(Point point){
     bool pointIsOccupied = false;
@@ -329,6 +336,11 @@ class Chess{
       testPoints.push_back(Point(position.x + 1, position.y + 1));
       testPoints.push_back(Point(position.x - 1, position.y + 1));
       testPoints.push_back(Point(position.x, position.y + 2));      
+    }else if(piece.team == BLUE){
+      testPoints.push_back(Point(position.x, position.y - 1));
+      testPoints.push_back(Point(position.x + 1, position.y - 1));
+      testPoints.push_back(Point(position.x - 1, position.y - 1));
+      testPoints.push_back(Point(position.x, position.y - 2));
     }
 
     for(int i = 0; i < testPoints.size(); i++){
@@ -354,7 +366,7 @@ class Chess{
     regEntry.piece.moves = moves;
   }
 
-  void setPieceMoves(){
+  void updatePieceMoves(){
 
     if(this->pieceRegistry.entry.size() > 0){
         for(int i = 0; i < this->pieceRegistry.entry.size(); i++){
@@ -381,6 +393,19 @@ class Chess{
     }    
   }
 
+  void removePieceMoves(){
+    if(this->pieceRegistry.entry.size() > 0){
+
+      for(int i = 0; i < this->pieceRegistry.entry.size(); i++){
+
+        if(this->pieceRegistry.entry[i].piece.moves.size() > 0){
+
+          this->pieceRegistry.entry[i].piece.moves.clear();
+        }
+      }
+    }
+  }
+
   void displayPath(CRGB leds[64]){
     if(this->possibleMoves.size() > 0){
         for(int i = 0; i < this->possibleMoves.size(); i++){
@@ -397,53 +422,149 @@ class Chess{
     }
   }
 
+  void clearBoardLeds(CRGB leds[64]){
+    for(int i = 0; i < 64; i++){
+      leds[i] = CRGB::Black;
+    }
+    FastLED.show();
+  }
+
+  void displayPoints(CRGB leds[64], Point point, CRGB::HTMLColorCode color){
+
+    int ledAddress = getLedAddress(point);
+    
+    leds[ledAddress] = color;
+
+    FastLED.show();
+  }
+
+  void processAwaitingMove(Chess::SquareState changedPoint){
+    this->validPiece = false;
+
+    for(int i = 0; i < this->pieceRegistry.entry.size(); i++){//cycle through all piece entries
+
+      PieceRegistry::Entry pieceRegistryEntry = this->pieceRegistry.entry[i];
+
+      if( (changedPoint.point == pieceRegistryEntry.point) && (changedPoint.behavior == falling)){
+
+        if( (pieceRegistryEntry.piece.team == this->currentTeam) && (pieceRegistryEntry.piece.moves.size() > 0) ){
+
+          this->pieceInPlay = pieceRegistryEntry.piece;
+
+          for(int i = 0; i < pieceRegistryEntry.piece.moves.size(); i++){
+            this->possibleMoves.push_back(pieceRegistryEntry.piece.moves[i]);
+          }
+
+          this->validPiece = true;
+
+          displayPath(leds);
+
+          this->mode = awaitingPiecePlacement;
+        }
+      }
+    }
+  }
+
+  void processAwaitingPiecePlacement(Chess::SquareState changedPoint){
+
+    bool changedPointIsValid = false;
+
+    for(int i = 0; i < this->pieceInPlay.moves.size(); i++){
+
+      Move move = this->pieceInPlay.moves[i];
+
+      if(changedPoint.point == move.position){        
+
+        for(int i = 0; i < pieceRegistry.entry.size(); i++){
+
+          if(this->pieceInPlay == pieceRegistry.entry[i].piece){
+
+            changedPointIsValid = true;
+
+            pieceRegistry.entry[i].piece.isFirstMove = false;
+
+            pieceRegistry.entry[i].point = changedPoint.point;
+
+            this->possibleMoves.clear();
+
+            clearBoardLeds(leds);
+
+            this->mode = awaitingMove;
+
+            this->piecePathsUpdated = false;
+
+            if(this->currentTeam == RED){
+              this->currentTeam = BLUE;
+            }else{
+              this->currentTeam = RED;
+            }
+
+            break;
+          }
+        }
+      }
+      if(!changedPointIsValid){
+        displayPoints(leds, changedPoint.point, CRGB::Red);
+      }
+    }
+  }
+
   public:
 
   void process(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous, CRGB leds[64]){
 
-    if(!this->piecePossibleMovesUpdated){//updates possible moves
+    if(!this->ifSetupComplete){
 
-      setPieceMoves();
+      int pieceCount = pieceRegistry.entry.size();
 
-      this->piecePossibleMovesUpdated = true;
+      int correctPiecePlacementCount = 0;
+
+      for(int i = 0; i < pieceCount; i++){
+
+        Point piecePoint = pieceRegistry.entry[i].point;
+
+        bool squareState = current[piecePoint.x - 1][piecePoint.y - 1];
+
+        if(squareState == 1){
+          correctPiecePlacementCount = correctPiecePlacementCount + 1;
+        }
+      }
+
+      if(correctPiecePlacementCount == pieceCount){
+        this->ifSetupComplete = true;
+      }
+    }
+
+    if(!this->piecePathsUpdated){
+
+      updatePieceMoves();
+
+      this->piecePathsUpdated = true;
     }
 
     this->inputChange = getHallStateArrayDifferences(current, previous);    
 
-    if(this->inputChange.size() > 0){
+    if(this->inputChange.size() > 0 && this->ifSetupComplete){
 
-      Chess::SquareState changedPoint = this->inputChange[0];    
+      Chess::SquareState changedPoint = this->inputChange[0];
 
       switch(this->mode){
 
         case awaitingMove:
 
-        this->validPiece = false;
-
-        for(int i = 0; i < this->pieceRegistry.entry.size(); i++){//cycle through all piece entries
-
-          PieceRegistry::Entry pieceRegistryEntry = this->pieceRegistry.entry[i];
-
-          if( (changedPoint.point == pieceRegistryEntry.point)){
-
-            if( (pieceRegistryEntry.piece.team == this->currentTeam) && (pieceRegistryEntry.piece.moves.size() > 0) ){
-
-              this->pieceInPlay = pieceRegistryEntry.piece;
-
-              this->possibleMoves = pieceRegistryEntry.piece.moves;
-
-              this->validPiece = true;
-
-              displayPath(leds);
-
-              this->mode = awaitingPiecePlacement;
-            }
-          }
-        }        
+          processAwaitingMove(changedPoint);
 
         break;
 
         case awaitingPiecePlacement:
+
+          processAwaitingPiecePlacement(changedPoint);
+
+        break;
+
+        case error:
+
+
 
         break;
 
