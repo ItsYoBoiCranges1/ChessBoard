@@ -2,6 +2,7 @@
 #include <bitset>
 #include <array>
 #include <vector>
+#include <deque>
 
 #define DATA_PIN D6
 
@@ -29,40 +30,40 @@ class HallArray{
       selectedColumnBit = columnBit[columNum];
 
       delayMicroseconds(5000);
-      
+     
       digitalWrite(latch_clock, LOW);
-      
+     
       shiftOut(serial_data_Input_A, shift_clock, MSBFIRST, selectedColumnBit);
 
       digitalWrite(latch_clock, HIGH);
 
       delayMicroseconds(5000);
     }
-    
+   
     std::bitset<8> getRowState(){
 
       digitalWrite(sh_ld, LOW);
       delayMicroseconds(50);
       digitalWrite(sh_ld, HIGH);
       delayMicroseconds(50);
-      
+     
       digitalWrite(sh_inh, LOW);
 
       std::bitset<8> row;
 
-      for(int y = 0; y < 8; y++){//reading and shifting out next bit from 74HC165 
+      for(int y = 0; y < 8; y++){//reading and shifting out next bit from 74HC165
         row[y] = digitalRead(nQH);
         digitalWrite(clk, HIGH);
         digitalWrite(clk, LOW);
       }
 
       digitalWrite(sh_inh, HIGH);
-    
+   
       return row;
     }
-    
+   
     public:
-    
+   
     std::array<std::bitset<8>, 8> read(){
 
       std::array<std::bitset<8>, 8> state;
@@ -79,67 +80,44 @@ class HallArray{
     }
   };
 
-class Chess{
-  private:
+struct Point{
+  int x = -1;
+  int y = -1;
 
-  enum SensorBehavior{
-    rising,
-    falling
+  Point(int _x, int _y){
+    x = _x;
+    y = _y;
+  }
+
+  Point(){}
+
+  bool operator==(const Point& other) const{
+    return (x == other.x) && (y == other.y);
+  }
+
+  bool inBounds(){
+    bool inBound = false;
+
+    if(((x >= 1) && (x <= 8)) && ( (y >= 1) && (y <= 8))){
+      inBound = true;
+    }
+
+    return inBound;
+  }
+
+  void print(){
+
+    Serial.print("x: ");
+    Serial.print(x);
+
+    Serial.print(" y: ");
+    Serial.print(y);
+
+  }
 };
 
-  struct Point{
-    int x = -1;
-    int y = -1;
-
-    Point(int _x, int _y){
-      x = _x;
-      y = _y;
-    }
-
-    Point(){}
-
-    bool operator==(const Point& other) const{
-      return (x == other.x) && (y == other.y);
-    }
-
-    bool inBounds(){
-      bool inBound = false;
-
-      if( (x >= 1) && (x <= 8)){
-        inBound = true;
-      }
-
-      if( (y >= 1) && (y <= 8)){
-        inBound = true;
-      }
-
-      return inBound;
-    }
-
-    void print(){
-
-      Serial.print("x: ");
-      Serial.print(x);
-
-      Serial.print(" y: ");
-      Serial.print(y);
-
-    }
-  };
-
-  struct SquareState{
-    Point point;
-    SensorBehavior behavior;
-
-    SquareState(Point _point, SensorBehavior _behavior){
-      point = _point;
-      behavior = _behavior;
-    }
-
-    bool operator==(const SquareState& other) const{
-      return (point == other.point) && (behavior == other.behavior);
-    }
-  };
+class Chess{
+  public:
 
   enum Team{
     RED,
@@ -157,11 +135,10 @@ class Chess{
     Type type;
     Point position;
 
-    Move(Point _position, Type _type):      
-      position(_position),
-      type(_type){}
-    
-    Move() = default;
+    Move(Point _position, Type _type){
+      position = _position;
+      type = _type;
+    }
 
     bool operator==(const Move& other) const{
       return (type == other.type) && (position == other.position);
@@ -207,15 +184,13 @@ class Chess{
   };
 
     Type type;
-    int id = 0;
     std::vector<Move> moves;
     Team team;
     bool isFirstMove = true;
 
-    Piece(Type _type, Team _team, int _id){
+    Piece(Type _type, Team _team){
       type = _type;
       team = _team;
-      id = _id;
     }
 
     Piece(){
@@ -224,6 +199,19 @@ class Chess{
 
     bool operator==(const Piece& other) const{
       return (type == other.type) && (team == other.team);
+    }
+
+    void printPath(){
+      for(int i = 0 ; i < moves.size(); i++){
+        moves[i].print();      
+      }
+
+      if (isFirstMove){
+        Serial.println("is first move");
+      }else{
+        Serial.println(" not first move");
+      }
+      Serial.println();
     }
   };
 
@@ -239,82 +227,220 @@ class Chess{
       }
 
       Entry(){}
+
+      bool operator==(const Entry& other) const{
+        return (point == other.point) && (piece == other.piece);
+      }
     };
 
-    std::vector<Entry> reg;
+    std::deque<Entry> reg;
 
     PieceRegistry(){
-      reg.push_back(PieceRegistry::Entry(Point(2,2), Piece(Piece::PAWN, RED, 0)));
-      reg.push_back(PieceRegistry::Entry(Point(1,3), Piece(Piece::PAWN, BLUE, 1)));
-      reg.push_back(PieceRegistry::Entry(Point(1,5), Piece(Piece::PAWN, BLUE, 2)));
+      reg.push_back(PieceRegistry::Entry(Point(2,4), Piece(Piece::PAWN, BLUE)));
+
+      reg.push_back(PieceRegistry::Entry(Point(3,3), Piece(Piece::PAWN, RED)));
     }
 
-    bool isSquareOccupied(Point point){
-      bool isOccupied = false;
+  };
+ 
+  PieceRegistry pieceRegistry;  
+  Team currentTeam = BLUE;
+  bool inCheck = false;
 
-      for(int i = 0; i < reg.size(); i++){
-        if(point == reg[i].point){
-          isOccupied = true;
+  bool isSquareOccupied(Point point){
+    bool isOccupied = false;
+
+  for(int i = 0; i < pieceRegistry.reg.size(); i++){
+    if(point == pieceRegistry.reg[i].point){
+      isOccupied = true;
+      break;
+    }
+  }
+
+  return isOccupied;
+}
+
+  int getPiecIndexAtPoint(Point point){
+
+    int pieceIndex = -1;
+
+    if(pieceRegistry.reg.size() > 0){
+
+      for(int i = 0; i < pieceRegistry.reg.size(); i++){
+
+        if(point == pieceRegistry.reg[i].point){
+          pieceIndex = i;
         }
       }
+    }
+    return pieceIndex;
+  }
 
-      return isOccupied;
+  bool ifPieceHasMoves(int pieceIndex){
+
+    bool ifPieceHasMoves = false;
+
+    if(pieceRegistry.reg[pieceIndex].piece.moves.size() > 0){
+      ifPieceHasMoves = true;
     }
 
-    Entry getPieceAtPoint(Point point){
+    return ifPieceHasMoves;
+  }
 
-      Entry piece;
-
-      if(reg.size() > 0){
-
-        for(int i = 0; i < reg.size(); i++){
-
-          if(point == reg[i].point){
-            piece = reg[i];
-          }
-        }
+  void removeTakenPiece(Point point){
+    for(int index = 0; index < pieceRegistry.reg.size(); index++){
+      if(point == pieceRegistry.reg[index].point){
+        pieceRegistry.reg.erase(pieceRegistry.reg.begin() + index);
       }
-      return piece;
     }
+  }
 
-    void removeTakenPiece(int id){
-      reg.erase(reg.begin() + id);
+  void changeTeam(){
+    if(currentTeam == RED){
+      currentTeam = BLUE;
+    }else if(currentTeam == BLUE){
+      currentTeam = RED;
     }
-  };
+  }
 
-  enum BoardState{
-    awaitingPiecePickup,
-    awaitingPiecePlacement,
-    error
-  };
+  std::vector<Move> getPawnMoves(Team team, Point point, bool isFirstMove){
 
-  int getLedAddress(Point point){//sets leds layed out in a zigzag fashion
-  
-    int ledArrayPos;
-
+    std::vector<Move> moves;
     int x = point.x;
     int y = point.y;
 
-    if(y % 2 == 0){
-      ledArrayPos = ((y - 1) * 8) + (8 - x);
-    }else{
-      ledArrayPos = ((y - 1) * 8) + (x - 1);
+    std::vector<Point> testPoints;
+
+    if(team == RED){
+      testPoints.push_back(Point(x + 1, y + 1));
+      testPoints.push_back(Point(x -1, y + 1));
+      testPoints.push_back(Point(x, y + 1));
+      testPoints.push_back(Point(x, y + 2));
+    }else if(team == BLUE){
+      testPoints.push_back(Point(x + 1, y - 1));
+      testPoints.push_back(Point(x -1, y - 1));
+      testPoints.push_back(Point(x, y - 1));
+      testPoints.push_back(Point(x, y - 2));
     }
-    return ledArrayPos;
+
+    int testPieceIndex = -1;
+
+    for(int i = 0; i < 2; i++){
+
+      if(isSquareOccupied(testPoints[i])){
+
+        testPieceIndex = getPiecIndexAtPoint(testPoints[i]);
+
+        if((pieceRegistry.reg[testPieceIndex].piece.team != currentTeam) && (testPoints[i].inBounds()) ){
+
+          if(pieceRegistry.reg[testPieceIndex].piece.type == Piece::KING){
+
+            moves.push_back(Move(testPoints[i], Move::INCHECK));
+          }else{
+
+            moves.push_back(Move(testPoints[i], Move::CONTESTED));
+          }      
+        }
+      }
+    }
+
+    if((!isSquareOccupied(testPoints[2])) && (testPoints[2].inBounds())){
+
+      moves.push_back(Move(testPoints[2], Move::UNCONTESTED));
+
+      if((!isSquareOccupied(testPoints[3])) && (isFirstMove)){
+
+        moves.push_back(Move(testPoints[3], Move::UNCONTESTED));  
+      }
+    }
+
+    return moves;
   }
-  
-  PieceRegistry pieceRegistry;
-  PieceRegistry::Entry currentPiece;
-  Team currentTeam = RED;
-  BoardState boardState = awaitingPiecePickup;
-  std::vector<Move> validMoves;
-  bool inCheck = false;
-  bool movesUpToDate = false;
+
+  void updatePieceMoves(){
+
+    Serial.println("Move generation start");
+
+    for(int i = 0; i < pieceRegistry.reg.size(); i++){
+      Point position = pieceRegistry.reg[i].point;
+
+      if(pieceRegistry.reg[i].piece.team == currentTeam){
+
+        switch(pieceRegistry.reg[i].piece.type){
+
+          case Piece::PAWN:
+
+            pieceRegistry.reg[i].piece.moves = getPawnMoves(pieceRegistry.reg[i].piece.team, position, pieceRegistry.reg[i].piece.isFirstMove);
+
+          break;
+        }
+      }else{
+        pieceRegistry.reg[i].piece.moves.clear();
+      }
+    }
+    Serial.println("Move generation complete");
+  }
+
+  int getPieceCount(){
+    return pieceRegistry.reg.size();
+  }
+
+  Point getPiecePosition(int pieceIndex){
+    return pieceRegistry.reg[pieceIndex].point;
+  }
+
+  Team getPieceTeam(Point position){
+    int pieceIndex = getPiecIndexAtPoint(position);
+    return pieceRegistry.reg[pieceIndex].piece.team;
+  }
+
+  std::vector<Move> getPieceMoves(int pieceIndex){
+    return pieceRegistry.reg[pieceIndex].piece.moves;
+  }
+
+  void movePiece(int pieceIndex, Point newPosition){
+    pieceRegistry.reg[pieceIndex].point = newPosition;
+  }
+
+  Chess(){
+    updatePieceMoves();
+  }
+};
+
+class Board{
+  public:
+
+  enum SensorBehavior{
+      rising,
+      falling
+  };
+
+  struct SquareState{
+    Point point;
+    SensorBehavior behavior;
+
+    SquareState(Point _point, SensorBehavior _behavior){
+      point = _point;
+      behavior = _behavior;
+
+      Serial.print("point changed: ");
+      point.print();
+
+      if(behavior == SensorBehavior::rising){
+        Serial.println(" rising");
+      }else{
+        Serial.println(" falling");
+      }
+    }
+
+    bool operator==(const SquareState& other) const{
+      return (point == other.point) && (behavior == other.behavior);
+    }
+  };
 
   std::vector<SquareState> getInputChanges(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous){
 
-    std::vector<SquareState> state;    
-
+    std::vector<SquareState> state;
     SensorBehavior behavior;
 
     for(int x = 0; x < 8; x++){
@@ -332,200 +458,192 @@ class Chess{
     return state;
   }
 
-  void setPawnMoves(PieceRegistry::Entry& pieceRegEntry){
+  enum BoardState{
+    awaitingInitialPieceSetup,
+    awaitingPiecePickup,
+    awaitingPiecePlacement,
+    incorrectPiecePickup,
+    incorrectPiecePlacement
+  };
 
-    std::vector<Move> moves;
-    int x = pieceRegEntry.point.x;
-    int y = pieceRegEntry.point.y;
+  int getLedAddress(Point point){//sets leds layed out in a zigzag fashion
 
-    std::vector<Point> testPoints;
+    int x = point.x;
+    int y = point.y;
 
-    if(pieceRegEntry.piece.team == RED){
-      testPoints.push_back(Point(x + 1, y + 1));
-      testPoints.push_back(Point(x -1, y + 1));
-      testPoints.push_back(Point(x, y + 1));
-      testPoints.push_back(Point(x, y + 2));
-    }else if(pieceRegEntry.piece.team == BLUE){
-      testPoints.push_back(Point(x + 1, y - 1));
-      testPoints.push_back(Point(x -1, y - 1));
-      testPoints.push_back(Point(x, y - 1));
-      testPoints.push_back(Point(x, y - 2));
-    }
+    int ledArrayPos = ((y - 1) * 8);
 
-    PieceRegistry::Entry testPiece;
-    bool isSquareOccupied;
-
-    for(int i = 0; i < 2; i++){
-
-      testPiece = pieceRegistry.getPieceAtPoint(testPoints[i]);
-
-      isSquareOccupied = pieceRegistry.isSquareOccupied(testPoints[i]);
-
-      if(!isSquareOccupied){
-
-        if((testPiece.piece.team != currentTeam) && (testPoints[i].inBounds()) ){
-
-          if(testPiece.piece.type == Piece::KING){
-
-            moves.push_back(Move(testPoints[i], Move::INCHECK));
-          }else{
-
-            moves.push_back(Move(testPoints[i], Move::CONTESTED));
-          }      
-        }
-      }
-    }
-
-    testPiece = pieceRegistry.getPieceAtPoint(testPoints[2]);
-
-    if((isSquareOccupied) && (testPoints[2].inBounds())){
-
-      moves.push_back(Move(testPoints[2], Move::UNCONTESTED));
-
-      testPiece = pieceRegistry.getPieceAtPoint(testPoints[3]);
-
-      if((isSquareOccupied) && (pieceRegEntry.piece.isFirstMove)){
-
-        moves.push_back(Move(testPoints[3], Move::UNCONTESTED));  
-      }
-    }
-
-    pieceRegEntry.piece.moves = moves;
-  }
-
-  void setPieceMoves(){
-
-    for(int i = 0; i < pieceRegistry.reg.size(); i++){
-
-      if(pieceRegistry.reg[i].piece.team == currentTeam){
-
-        switch(pieceRegistry.reg[i].piece.type){
-
-          case Piece::PAWN:
-
-            setPawnMoves(pieceRegistry.reg[i]);
-
-          break;
-        }
-      }
-    }
-  }
-
-  void changeTeam(){
-    if(currentTeam == RED){
-      currentTeam = BLUE;
+    if(y % 2 == 0){
+      ledArrayPos = ledArrayPos + (8 - x);
     }else{
-      currentTeam = RED;
+      ledArrayPos = ledArrayPos + (x - 1);
+    }
+    return ledArrayPos;
+  }
+
+  void setLedColor(Point point, CRGB color, CRGB leds[64]){
+
+    int ledAddress = getLedAddress(point);
+
+    leds[ledAddress] = color;
+  }
+
+  void displayMoves(std::vector<Chess::Move> moves, CRGB leds[64]){
+
+    for(int i = 0; i < moves.size(); i++){
+
+      switch(moves[i].type){
+        case Chess::Move::UNCONTESTED:
+          setLedColor(moves[i].position, CRGB::Green, leds);
+        break;
+
+        case Chess::Move::CONTESTED:
+          setLedColor(moves[i].position, CRGB::Red, leds);
+        break;
+      }
     }
   }
 
-  public:
+  void clearLeds(CRGB leds[64]){
 
-  void process(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous, CRGB leds[64]){
+    for(int i = 0; i < 64; i++){
+      leds[i] = CRGB::Black;
+    }
+  }
 
-    if(!movesUpToDate){
+  BoardState boardState = awaitingInitialPieceSetup;
+  std::vector<Chess::Move> currentPieceMoves;
+  int currentPieceIndex = -1;
+  int incorrectPieceIndex = -1;
+  Chess chess;
 
-      setPieceMoves();
+  void awaitingInitialPieceSetupRoutine(SquareState change, CRGB leds[64], std::array<std::bitset<8>, 8> sensorState){
 
-      movesUpToDate = true;
+  }
+
+  void awaitingPiecePickupRoutine(SquareState change, CRGB leds[64]){
+
+    currentPieceIndex = -1;
+    incorrectPieceIndex = -1;
+
+    bool isChangedPointOccupied = chess.isSquareOccupied(change.point);
+
+    Serial.println("piece pickup routine");
+
+    if(isChangedPointOccupied){
+      int pieceIndexAtChangedPoint = chess.getPiecIndexAtPoint(change.point);
+      bool ifPieceHasMoves = chess.ifPieceHasMoves(pieceIndexAtChangedPoint);
+
+      if(ifPieceHasMoves){
+        currentPieceIndex = pieceIndexAtChangedPoint;
+        boardState = awaitingPiecePlacement;
+
+        currentPieceMoves = chess.getPieceMoves(currentPieceIndex);
+        displayMoves(currentPieceMoves, leds);
+
+        FastLED.show();
+
+      }else{
+        incorrectPieceIndex = pieceIndexAtChangedPoint;
+        boardState = incorrectPiecePickup;
+
+        setLedColor(change.point, CRGB::Red, leds);
+
+        FastLED.show();
+
+        //change square to red
+      }
+    }
+  }
+
+  void incorrectPiecePickupRoutine(SquareState change, CRGB leds[64]){
+
+    Point position = chess.getPiecePosition(incorrectPieceIndex);
+
+    if(change.point == position){
+      incorrectPieceIndex = -1;
+
+      boardState = awaitingPiecePickup;
+      setLedColor(change.point, CRGB::Black, leds);
+
+      FastLED.show();
+    }
+  }
+
+  void awaitingPiecePlacementRoutine(SquareState change, CRGB leds[64]){
+
+    for(int i = 0; i < currentPieceMoves.size(); i++){
+
+      if( (change.point == currentPieceMoves[i].position)){
+
+        if((currentPieceMoves[i].type == Chess::Move::UNCONTESTED)){
+          chess.movePiece(currentPieceIndex, change.point);
+          chess.changeTeam();
+          chess.updatePieceMoves();
+          currentPieceIndex = -1;
+          boardState = awaitingPiecePickup;
+          clearLeds(leds);
+          FastLED.show();
+          break;
+        }else if((currentPieceMoves[i].type == Chess::Move::CONTESTED)){
+          chess.removeTakenPiece(currentPieceMoves[i].position);
+          currentPieceMoves[i].type = Chess::Move::UNCONTESTED;
+        }        
+      }
+    }
+  }
+
+  bool isPointOccupied(Point point, std::array<std::bitset<8>, 8> current){
+    bool isOccupied = false;
+
+    if(current[point.x - 1][point.y - 1] == 1){
+      isOccupied = true;
     }
 
-    std::vector<SquareState> inputChange = getInputChanges(current,previous);
+    return isOccupied;
+  }
 
-    if(inputChange.size() > 0){
+  void processInput(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous, CRGB leds[64]){
 
-      bool isPointOccupied = pieceRegistry.isSquareOccupied(inputChange[0].point);
+    std::vector<SquareState> inputChanges = getInputChanges(current,previous);
+
+    if(inputChanges.size() > 0){
+
+      SquareState change = inputChanges[0];
 
       switch(boardState){
 
-        case awaitingPiecePickup:          
+        case awaitingInitialPieceSetup:
 
-          if(!isPointOccupied){
+          awaitingInitialPieceSetupRoutine(change, leds, current);
 
-            PieceRegistry::Entry pieceAtChangedPoint = pieceRegistry.getPieceAtPoint(inputChange[0].point);
+        break;
 
-            if((pieceAtChangedPoint.piece.team == currentTeam) && (pieceAtChangedPoint.piece.moves.size() > 0) && (inputChange[0].behavior == falling)){
+        case awaitingPiecePickup:
 
-              currentPiece = pieceAtChangedPoint;
-              boardState = awaitingPiecePlacement;
-              //pieceAtChangedPoint = nullptr;
+          awaitingPiecePickupRoutine(change, leds);
 
-              for(int i = 0; i < currentPiece.piece.moves.size(); i++){
+        break;
 
-                CRGB color;
+        case incorrectPiecePickup:
 
-                switch(currentPiece.piece.moves[i].type){
+          incorrectPiecePickupRoutine(change, leds);
 
-                  case Move::UNCONTESTED:
-                    color = CRGB::Green;
-                  break;
-
-                  case Move::CONTESTED:
-                    color = CRGB::Red;
-                  break;
-                }
-
-                int ledAddress = getLedAddress(currentPiece.piece.moves[i].position);
-                leds[ledAddress] = color;
-              }
-
-              FastLED.show();
-            }
-          }
         break;
 
         case awaitingPiecePlacement:
 
-        for(int i = 0; i < currentPiece.piece.moves.size(); i++){
+          awaitingPiecePlacementRoutine(change, leds);
 
-          if( (currentPiece.piece.moves[i].position == inputChange[0].point) && (inputChange[0].behavior == rising) && (currentPiece.piece.moves[i].type == Move::UNCONTESTED)){
-
-            currentPiece.point = inputChange[0].point;
-            boardState = awaitingPiecePickup;
-            movesUpToDate = false;
-
-            if(currentPiece.piece.isFirstMove){
-              currentPiece.piece.isFirstMove = false;
-            }
-            int ledIterator = 0;
-
-            for(int x = 0; x < 8; x++){//sets all leds to black
-              for(int y = 0; y < 8; y++){
-                leds[ledIterator] = CRGB::Black;
-                ledIterator = ledIterator + 1;
-              }
-            }            
-            FastLED.show();
-
-            changeTeam();
-
-            break;
-          }
-
-          if( (currentPiece.piece.moves[i].position == inputChange[0].point) && (inputChange[0].behavior == falling) && (currentPiece.piece.moves[i].type == Move::CONTESTED)){
-            PieceRegistry::Entry removedPiece = pieceRegistry.getPieceAtPoint(inputChange[0].point);
-            pieceRegistry.removeTakenPiece(removedPiece.piece.id);
-            currentPiece.piece.moves[i].type = Move::UNCONTESTED;
-          }
-        }
         break;
+
       }
     }
-  }
-
-  void testPiecePathOutput(){
-
-    setPieceMoves();
-
-    for(int i = 0; i < pieceRegistry.reg[0].piece.moves.size(); i++){
-
-      pieceRegistry.reg[0].piece.moves[i].print();
-    }
-  }
+  }  
 };
 
 HallArray hallArray;
-Chess chess;
+Board board;
 CRGB leds[64];
 
 std::array<std::bitset<8>, 8> currentHallArrayState;
@@ -533,7 +651,10 @@ std::array<std::bitset<8>, 8> previousHallArrayState;
 
 void setup() {
 
-  Serial.begin(115200);  
+  Serial.begin(115200);
+
+  Serial.println("setup begin");
+  Serial.println();
 
   //74HC595 pin setup
   pinMode(latch_clock, OUTPUT);
@@ -565,11 +686,36 @@ void setup() {
       ledIterator = ledIterator + 1;
     }
   }
-  
+ 
   FastLED.show();
+
+  /*
+
+  chess.pieceRegistry.printAllPieceInfo();
+
+  Serial.println();
+
+  chess.pieceRegistry.removeTakenPiece(0);
+
+  Serial.println();
+
+  chess.pieceRegistry.printAllPieceInfo();
+
+  */
+  Serial.println("Setup complete");
 }
 
 void loop(){
+
+  currentHallArrayState = hallArray.read();
+
+  if(previousHallArrayState != currentHallArrayState){
+
+      board.processInput(currentHallArrayState, previousHallArrayState, leds);
+
+      previousHallArrayState = currentHallArrayState;
+    }
+}
 
   currentHallArrayState = hallArray.read();
 
