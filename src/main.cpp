@@ -716,13 +716,3 @@ void loop(){
       previousHallArrayState = currentHallArrayState;
     }
 }
-
-  currentHallArrayState = hallArray.read();
-
-  if(previousHallArrayState != currentHallArrayState){
-
-    chess.process(currentHallArrayState, previousHallArrayState, leds);
-
-    previousHallArrayState = currentHallArrayState;
-  }
-}
