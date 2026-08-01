@@ -95,6 +95,10 @@ struct Point{
     return (x == other.x) && (y == other.y);
   }
 
+  bool operator!=(const Point& other) const{
+    return (x != other.x) || (y != other.y);
+  }
+
   bool inBounds(){
     bool inBound = false;
 
@@ -116,433 +120,958 @@ struct Point{
   }
 };
 
+std::vector<Point> generateDiagnalLine(Point start, int xMod, int yMod){
+  std::vector<Point> line;
+
+  int pointX = start.x;
+  int pointY = start.y;
+  bool pathIsValid = true;
+
+  while(pathIsValid){
+
+    pointX = pointX + xMod;
+    pointY = pointY + yMod;
+
+    Point testPoint(pointX, pointY);
+
+    if(testPoint.inBounds()){
+
+      line.push_back(testPoint);
+
+    }else{
+      pathIsValid = false;
+    }
+  }
+
+  return line;
+}
+
+std::vector<Point> generateStraightLine(Point start, Point stop, bool isEndInclusive){
+
+  int xMod = 0;
+  int yMod = 0;
+  int xDifference = 0;
+  int yDifference = 0;
+  int pointAmount = 0;
+
+  if(start.x == stop.x){
+
+    if(start.y > stop.y){
+      yMod = -1;
+    }else{
+      yMod = 1;
+    }
+    pointAmount = abs(start.y - stop.y);
+
+  }else if(start.y == stop.y){
+
+    if(start.x > stop.x){
+      xMod = -1;
+    }else{
+      xMod = 1;
+    }
+
+    pointAmount = abs(start.x - stop.x);
+  }
+
+  std::vector<Point> points;
+  int pointX = start.x;
+  int pointY = start.y;
+
+  if((pointAmount >= 0) ){
+    for(int i = 1; i <= pointAmount; i++){
+
+      pointX = pointX + xMod;
+      pointY = pointY + yMod;
+
+      Point testPoint(pointX, pointY);
+      bool isValidPoint = false;
+
+      if(testPoint.inBounds()){
+        isValidPoint = true;
+
+        if(!isEndInclusive){
+          if((testPoint == start) || (testPoint == stop)){
+            isValidPoint = false;
+          }
+        }        
+      }
+
+      if(isValidPoint){
+        points.push_back(testPoint);
+      }
+    }
+  }
+
+  return points;
+}
+
+std::vector<Point> generateConcentricRing(Point center, int step){
+  std::vector<Point> ring;
+  std::vector<Point> points;
+
+  points.push_back(Point(center.x + step, center.y + step));
+  points.push_back(Point(center.x - step, center.y + step));
+  points.push_back(Point(center.x - step, center.y - step));
+  points.push_back(Point(center.x + step, center.y - step));
+
+  /*
+
+  if(corners[0].inBounds()){
+    ring.push_back(corners[0]);
+  }
+
+  if(corners[1].inBounds()){
+    ring.push_back(corners[1]);
+  }
+
+  if(corners[2].inBounds()){
+    ring.push_back(corners[2]);
+  }
+
+  if(corners[3].inBounds()){
+    ring.push_back(corners[3]);
+  }
+
+  */
+
+  std::vector<Point> sideA = generateStraightLine(points[0], points[1], false);
+  std::vector<Point> sideB = generateStraightLine(points[1], points[2], false);
+  std::vector<Point> sideC = generateStraightLine(points[2], points[3], false);
+  std::vector<Point> sideD = generateStraightLine(points[3], points[0], false);
+
+  if(sideA.size() > 0){
+    points.insert(points.end(), sideA.begin(), sideA.end());
+  }
+
+  if(sideB.size() > 0){
+    points.insert(points.end(), sideB.begin(), sideB.end());
+  }
+
+  if(sideC.size() > 0){
+    points.insert(points.end(), sideC.begin(), sideC.end());
+  }
+
+  if(sideD.size() > 0){
+    points.insert(points.end(), sideD.begin(), sideD.end());
+  }
+
+  for(int i = 0; i < points.size(); i++){
+
+    if(points[i].inBounds()){
+      ring.push_back(points[i]);
+    }
+  }
+
+  return ring;
+}
+
+std::vector<std::vector<Point>> generateConcentricRings(Point center){
+  std::vector<std::vector<Point>> rings;
+
+  for(int i = 0; i < 8; i++){
+
+    std::vector<Point> ring = generateConcentricRing(center, i);
+
+    if(ring.size() > 0){
+
+      rings.push_back(ring);
+    }else{
+      break;
+    }
+  }
+
+  return rings;
+}
+
 class Chess{
-  public:
+    public:
 
-  enum Team{
-    RED,
-    BLUE,
-    NONE
-  };
+    enum Team{
+      RED,
+      BLUE,
+      NONE
+    };
 
-  struct Move{
+    struct Move{
 
-    enum Type{
-      UNCONTESTED,
-      CONTESTED,
-      INCHECK
-  };
+      enum Type{
+        UNCONTESTED,
+        CONTESTED,
+        INCHECK,
+        PIN
+    };
 
-    Type type;
-    Point position;
+      Type type;
+      Point position;
 
-    Move(){}
+      Move(){}
 
-    Move(Point _position, Type _type){
-      position = _position;
-      type = _type;
-    }
-
-    bool operator==(const Move& other) const{
-      return (type == other.type) && (position == other.position);
-    }
-
-    void print(){
-
-      position.print();
-
-      Serial.print(" ");
-
-      switch(type){
-        case UNCONTESTED:
-
-          Serial.println("UNCONTESTED");
-
-        break;
-
-        case CONTESTED:
-
-          Serial.println("CONTESTED");
-
-        break;
-
-        case INCHECK:
-
-          Serial.println("INCHECK");
-
-        break;
-      }
-    }
-  };
-
-  struct Piece{
-
-    enum Type{
-      PAWN,
-      KNIGHT,
-      BISHOP,
-      ROOK,
-      QUEEN,
-      KING
-  };
-
-    Type type;
-    std::vector<Move> moves;
-    Team team;
-    bool isFirstMove = true;
-
-    Piece(Type _type, Team _team){
-      type = _type;
-      team = _team;
-    }
-
-    Piece(){
-
-    }
-
-    bool operator==(const Piece& other) const{
-      return (type == other.type) && (team == other.team);
-    }
-
-    void printPath(){
-      for(int i = 0 ; i < moves.size(); i++){
-        moves[i].print();      
+      Move(Point _position, Type _type){
+        position = _position;
+        type = _type;
       }
 
-      if (isFirstMove){
-        Serial.println("is first move");
-      }else{
-        Serial.println(" not first move");
-      }
-      Serial.println();
-    }
-  };
-
-  struct PieceRegistry{
-
-    struct Entry{
-      Point point;
-      Piece piece;
-
-      Entry(Point _point, Piece _piece){
-        point = _point;
-        piece = _piece;        
+      bool operator==(const Move& other) const{
+        return (type == other.type) && (position == other.position);
       }
 
-      Entry(){}
+      bool operator!=(const Move& other) const{
+        return (type != other.type) || (position != other.position);
+      }
 
-      bool operator==(const Entry& other) const{
-        return (point == other.point) && (piece == other.piece);
+      void print(){
+
+        position.print();
+
+        Serial.print(" ");
+
+        switch(type){
+          case UNCONTESTED:
+
+            Serial.println("UNCONTESTED");
+
+          break;
+
+          case CONTESTED:
+
+            Serial.println("CONTESTED");
+
+          break;
+
+          case INCHECK:
+
+            Serial.println("INCHECK");
+
+          break;
+        }
       }
     };
 
-    std::deque<Entry> reg;
+    struct Piece{
 
-    PieceRegistry(){
+      enum Type{
+        PAWN,//complete
+        KNIGHT,//complete
+        BISHOP,//complete
+        ROOK,//complete
+        QUEEN,//complete
+        KING,
+        NONE
+    };
 
-      //reg.push_back(PieceRegistry::Entry(Point(3,6), Piece(Piece::PAWN, RED)));
-      //reg.push_back(PieceRegistry::Entry(Point(1,2), Piece(Piece::PAWN, RED)));
+      Type type;
+      std::vector<Move> moves;
+      Team team;
+      bool isFirstMove = true;
 
-      reg.push_back(PieceRegistry::Entry(Point(4,4), Piece(Piece::ROOK, BLUE)));
-      //reg.push_back(PieceRegistry::Entry(Point(2,4), Piece(Piece::PAWN, BLUE)));
+      Piece(Type _type, Team _team) : type(_type), team(_team) {}
+      Piece() = default;
+      Piece(const Piece& other) = default;
+      Piece(Piece&& other) noexcept = default;
+      Piece& operator=(const Piece& other) = default;
+      Piece& operator=(Piece&& other) noexcept = default;
+      ~Piece() = default;
+
+      bool operator==(const Piece& other) const{
+        return (type == other.type) && (team == other.team);
+      }
+
+      void removePath(){
+          moves.clear();
+      }
+
+      void printPath(){
+        for(int i = 0 ; i < moves.size(); i++){
+          moves[i].print();      
+        }
+
+        if (isFirstMove){
+          Serial.println("is first move");
+        }else{
+          Serial.println(" not first move");
+        }
+        Serial.println();
+      }
+    };
+
+    struct PieceRegistry{
+
+      struct Entry{
+        Point point;
+        Piece piece;
+
+        Entry(Point _point, Piece _piece){
+          point = _point;
+          piece = _piece;        
+        }
+
+        Entry(){}
+
+        bool operator==(const Entry& other) const{
+          return (point == other.point) && (piece == other.piece);
+        }
+      };
+
+      std::deque<Entry> reg;  
+
+      PieceRegistry(){
+        reg.push_back(PieceRegistry::Entry(Point(4,2), Piece(Piece::KING, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(7,2), Piece(Piece::KING, BLUE)));
+
+        reg.push_back(PieceRegistry::Entry(Point(8,3), Piece(Piece::BISHOP, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(6,8), Piece(Piece::BISHOP, RED)));
+      }
+
+      /*
+
+      PieceRegistry(){
+        reg.push_back(PieceRegistry::Entry(Point(4,1), Piece(Piece::KING, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(5,8), Piece(Piece::KING, BLUE)));
+
+        reg.push_back(PieceRegistry::Entry(Point(1,2), Piece(Piece::PAWN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(2,2), Piece(Piece::PAWN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(3,2), Piece(Piece::PAWN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(4,2), Piece(Piece::PAWN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(5,2), Piece(Piece::PAWN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(6,2), Piece(Piece::PAWN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(7,2), Piece(Piece::PAWN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(8,2), Piece(Piece::PAWN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(1,1), Piece(Piece::ROOK, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(8,1), Piece(Piece::ROOK, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(2,1), Piece(Piece::KNIGHT, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(7,1), Piece(Piece::KNIGHT, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(3,1), Piece(Piece::BISHOP, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(6,1), Piece(Piece::BISHOP, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(5,1), Piece(Piece::QUEEN, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(1,7), Piece(Piece::PAWN, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(2,7), Piece(Piece::PAWN, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(3,7), Piece(Piece::PAWN, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(4,7), Piece(Piece::PAWN, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(5,7), Piece(Piece::PAWN, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(6,7), Piece(Piece::PAWN, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(7,7), Piece(Piece::PAWN, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(8,7), Piece(Piece::PAWN, BLUE)));      
+        reg.push_back(PieceRegistry::Entry(Point(1,8), Piece(Piece::ROOK, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(8,8), Piece(Piece::ROOK, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(2,8), Piece(Piece::KNIGHT, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(7,8), Piece(Piece::KNIGHT, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(3,8), Piece(Piece::BISHOP, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(6,8), Piece(Piece::BISHOP, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(4,8), Piece(Piece::QUEEN, BLUE)));
+      }
+      */
+
+    };
+ 
+    PieceRegistry pieceRegistry;
+    Team currentTeam = RED;
+    PieceRegistry::Entry& redKing = pieceRegistry.reg[0];
+    PieceRegistry::Entry&  blueKing = pieceRegistry.reg[1];
+
+    int getPiecIndexAtPoint(Point point){
+      int pieceIndex = -1;
+
+      if(pieceRegistry.reg.size() > 0){
+
+        for(int i = 0; i < pieceRegistry.reg.size(); i++){
+
+          if(point == pieceRegistry.reg[i].point){
+            pieceIndex = i;
+            break;
+          }
+        }
+      }
+      return pieceIndex;
     }
 
-  };
- 
-  PieceRegistry pieceRegistry;  
-  Team currentTeam = BLUE;
-  bool inCheck = false; 
+    bool isOccupied(Point point){
+        bool isOccupied = false;
 
-  int getPiecIndexAtPoint(Point point){
+        int pieceIndex = getPiecIndexAtPoint(point);
 
-    int pieceIndex = -1;
+        if(pieceIndex >= 0){
+          isOccupied = true;
+        }
 
-    if(pieceRegistry.reg.size() > 0){
+      return isOccupied;
+    }
 
+    bool ifPieceHasMoves(Point point){
+      bool ifPieceHasMoves = false;
+
+      int pieceIndex = getPiecIndexAtPoint(point);
+
+      if(pieceIndex >= 0){
+
+        if(pieceRegistry.reg[pieceIndex].piece.moves.size() > 0){        
+          ifPieceHasMoves = true;
+        }
+      }  
+
+      return ifPieceHasMoves;
+    }
+
+    void removeTakenPiece(Point point){
+
+      int pieceIndex = getPiecIndexAtPoint(point);
+
+      if(pieceIndex >= 0){
+        pieceRegistry.reg.erase(pieceRegistry.reg.begin() + pieceIndex);
+      }    
+    }
+
+    void changeTeam(){
+      if(currentTeam == RED){
+        currentTeam = BLUE;
+      }else if(currentTeam == BLUE){
+        currentTeam = RED;
+      }
+    }
+
+    Team getPieceTeam(Point point){
+
+      Team pieceTeam = Team::NONE;
+
+      int pieceIndex = getPiecIndexAtPoint(point);
+
+      if(pieceIndex >= 0){
+        pieceTeam = pieceRegistry.reg[pieceIndex].piece.team;
+      }
+
+      return pieceTeam;
+    }
+
+    Piece::Type getPieceType(Point point){
+
+      Piece::Type pieceType = Piece::Type::NONE;
+
+      int pieceIndex = getPiecIndexAtPoint(point);
+
+      if(pieceIndex >= 0){
+        pieceType = pieceRegistry.reg[pieceIndex].piece.type;
+      }
+
+      return pieceType;
+    }
+
+    bool isOccupiedByOpponent(Point point, Team team){
+
+      Team pieceTeam = getPieceTeam(point);
+
+      if(pieceTeam != team){
+        return true;
+      }else{
+        return false;
+      }
+    }
+
+    bool isOccupiedByOpponentKing(Point point, Team team){
+
+      bool isOccupiedByOpponentKing = false;
+
+      if(isOccupied(point)){      
+
+        if(isOccupiedByOpponent(point, team)){
+
+          int occupyingPieceIndex = getPiecIndexAtPoint(point);
+       
+          if(pieceRegistry.reg[occupyingPieceIndex].piece.type == Piece::KING){
+            isOccupiedByOpponentKing = true;
+          }
+        }
+      }
+      return isOccupiedByOpponentKing;
+    }
+
+    PieceRegistry::Entry* getPieceAtPoint(Point point){
+      for(int i = 0; i < pieceRegistry.reg.size(); i++){
+        if(point == pieceRegistry.reg[i].point){
+          return &pieceRegistry.reg[i];
+        }
+      }
+    }
+   
+    std::vector<Move> getPathFromStraightLine(Point start, Point stop, Team team){
+      std::vector<Point> testPoints = generateStraightLine(start, stop, true);
+      std::vector<Move> moves;
+      bool pathIsBlocked = false;
+
+      for(int i = 0; i < testPoints.size(); i++){
+
+        if(!pathIsBlocked){
+
+          if(isOccupied(testPoints[i])){
+
+            pathIsBlocked = true;
+
+            if(isOccupiedByOpponent(testPoints[i], team)){
+
+              if(!isOccupiedByOpponentKing(testPoints[i], team)){
+                  moves.push_back(Move(testPoints[i], Move::CONTESTED));
+              }
+            }
+          }else{
+              moves.push_back(Move(testPoints[i], Move::UNCONTESTED));
+          }
+        }
+      }
+   
+      return moves;
+    }
+
+    std::vector<Move> getPathFromDiagnalLine(Point start, int xMod, int yMod, Team team){
+      std::vector<Point> testPoints = generateDiagnalLine(start, xMod, yMod);
+      std::vector<Move> moves;
+      int pointX = start.x;
+      int pointY = start.y;
+      bool isPathBlocked = false;
+      bool pathIsValid = true;
+
+
+      for(int i = 0; i < testPoints.size(); i++){
+
+        if(!isPathBlocked){
+          if(isOccupied(testPoints[i])){
+
+          isPathBlocked = true;
+
+          if(isOccupiedByOpponent(testPoints[i], team)){
+            moves.push_back(Move(testPoints[i], Move::CONTESTED));
+          }
+          }else{
+            moves.push_back(Move(testPoints[i], Move::UNCONTESTED));
+          }
+        }
+      }
+   
+      return moves;
+    }
+
+    std::vector<Move> generateStraightMoves(Team team, Point startingPoint){
+      std::vector<Move> moves;
+
+      std::vector<Move> posXMoves = getPathFromStraightLine(startingPoint, Point(8, startingPoint.y), team);
+
+      if(posXMoves.size() > 0){
+        moves.insert(moves.end(), posXMoves.begin(), posXMoves.end());
+      }
+
+      std::vector<Move> negXMoves = getPathFromStraightLine(startingPoint, Point(1, startingPoint.y), team);
+
+      if(negXMoves.size() > 0){
+        moves.insert(moves.end(), negXMoves.begin(), negXMoves.end());
+      }
+
+      std::vector<Move> posYMoves = getPathFromStraightLine(startingPoint, Point(startingPoint.x, 8), team);
+
+      if(posYMoves.size() > 0){
+        moves.insert(moves.end(), posYMoves.begin(), posYMoves.end());
+      }
+
+      std::vector<Move> negYMoves = getPathFromStraightLine(startingPoint, Point(startingPoint.x, 1), team);
+
+      if(negYMoves.size() > 0){
+        moves.insert(moves.end(), negYMoves.begin(), negYMoves.end());
+      }
+
+      return moves;
+    }
+
+    std::vector<Move> generateDiagnalMoves(Team team, Point startingPoint){
+      std::vector<Move> moves;
+
+      std::vector<Move> qOne = getPathFromDiagnalLine(startingPoint, 1, 1, team);
+
+      if(qOne.size() > 0){
+        moves.insert(moves.end(), qOne.begin(), qOne.end());
+      }
+
+      std::vector<Move> qTwo = getPathFromDiagnalLine(startingPoint, -1, 1, team);
+
+      if(qTwo.size() > 0){
+        moves.insert(moves.end(), qTwo.begin(), qTwo.end());
+      }
+
+      std::vector<Move> qThree = getPathFromDiagnalLine(startingPoint, -1, -1, team);
+
+      if(qThree.size() > 0){
+        moves.insert(moves.end(), qThree.begin(), qThree.end());
+      }
+
+      std::vector<Move> qFour = getPathFromDiagnalLine(startingPoint, 1, -1, team);
+
+      if(qFour.size() > 0){
+        moves.insert(moves.end(), qFour.begin(), qFour.end());
+      }
+
+      return moves;
+    }
+
+    std::vector<Move> getPawnMoves(Team team, Point point, bool isFirstMove){
+
+      std::vector<Move> moves;
+      int x = point.x;
+      int y = point.y;
+
+      std::vector<Point> testPoints;
+
+      if(team == RED){
+        testPoints.push_back(Point(x + 1, y + 1));
+        testPoints.push_back(Point(x -1, y + 1));
+        testPoints.push_back(Point(x, y + 1));
+        testPoints.push_back(Point(x, y + 2));
+      }else if(team == BLUE){
+        testPoints.push_back(Point(x + 1, y - 1));
+        testPoints.push_back(Point(x -1, y - 1));
+        testPoints.push_back(Point(x, y - 1));
+        testPoints.push_back(Point(x, y - 2));
+      }
+
+      int testPieceIndex = -1;
+
+      for(int i = 0; i < 2; i++){
+
+        if(isOccupied(testPoints[i])){
+
+          testPieceIndex = getPiecIndexAtPoint(testPoints[i]);
+
+          if((pieceRegistry.reg[testPieceIndex].piece.team != currentTeam) && (testPoints[i].inBounds()) ){
+
+            if(!isOccupiedByOpponentKing(pieceRegistry.reg[testPieceIndex].point, team)){
+
+              moves.push_back(Move(testPoints[i], Move::CONTESTED));
+            }
+          }
+        }
+      }
+
+      if((!isOccupied(testPoints[2])) && (testPoints[2].inBounds())){
+
+        moves.push_back(Move(testPoints[2], Move::UNCONTESTED));
+
+        if((!isOccupied(testPoints[3])) && (isFirstMove)){
+
+          moves.push_back(Move(testPoints[3], Move::UNCONTESTED));  
+        }
+      }
+
+      return moves;
+    }
+
+    std::vector<Move> getRookMoves(Team team, Point point){
+      std::vector<Move> moves = generateStraightMoves(team, point);
+      return moves;
+    }
+
+    std::vector<Move> getBishopMoves(Team team, Point point){
+      std::vector<Move> moves = generateDiagnalMoves(team, point);
+
+      return moves;
+    }
+
+    std::vector<Move> getQueenMoves(Team team, Point point){
+      std::vector<Move> moves;
+
+      std::vector<Move> straightMoves = generateStraightMoves(team, point);
+
+      if(straightMoves.size() > 0){
+        moves.insert(moves.end(), straightMoves.begin(), straightMoves.end());
+      }
+
+      std::vector<Move> diagnalMoves = generateDiagnalMoves(team, point);
+
+      if(diagnalMoves.size() > 0){
+        moves.insert(moves.end(), diagnalMoves.begin(), diagnalMoves.end());
+      }
+
+      return moves;
+    }
+
+    std::vector<Move> getKnightMoves(Team team, Point point){
+      std::vector<Move> moves;
+      int x = point.x;
+      int y = point.y;
+
+      std::vector<Point> testPoints;
+
+      testPoints.push_back(Point(x + 1, y + 2));
+      testPoints.push_back(Point(x + 2, y + 1));
+      testPoints.push_back(Point(x + 1, y - 2));
+      testPoints.push_back(Point(x + 2, y - 1));
+
+      testPoints.push_back(Point(x - 1, y + 2));
+      testPoints.push_back(Point(x - 2, y + 1));
+      testPoints.push_back(Point(x - 1, y - 2));
+      testPoints.push_back(Point(x - 2, y - 1));
+
+      for(int i = 0; i < testPoints.size(); i++){
+
+        if(testPoints[i].inBounds()){
+
+          if(isOccupied(testPoints[i])){
+
+            if(isOccupiedByOpponent(testPoints[i], team)){
+              moves.push_back(Move(testPoints[i], Move::CONTESTED));
+            }
+          }else{
+            moves.push_back(Move(testPoints[i], Move::UNCONTESTED));
+          }
+        }
+      }
+
+      return moves;
+    }
+
+    std::vector<Move> getKingMoves(Team team, Point point){
+      std::vector<Move> moves;
+      int x = point.x;
+      int y = point.y;
+
+      std::vector<Point> testPoints;
+
+      testPoints.push_back(Point(x,y + 1));
+      testPoints.push_back(Point(x + 1,y + 1));
+      testPoints.push_back(Point(x + 1,y));
+      testPoints.push_back(Point(x + 1,y - 1));
+      testPoints.push_back(Point(x,y - 1));
+      testPoints.push_back(Point(x - 1,y - 1));
+      testPoints.push_back(Point(x - 1,y));
+      testPoints.push_back(Point(x - 1,y + 1));
+
+      for(int i = 0; i < testPoints.size(); i++){
+
+        if(testPoints[i].inBounds()){
+
+          if(isOccupied(testPoints[i])){
+
+            if(isOccupiedByOpponent(testPoints[i], team)){
+              moves.push_back(Move(testPoints[i], Move::CONTESTED));
+            }
+          }else{
+            moves.push_back(Move(testPoints[i], Move::UNCONTESTED));
+          }
+        }
+      }
+
+      return moves;
+    }
+
+    void clearMoves(){
+      for(int i = 0; i < pieceRegistry.reg.size(); i++){
+        pieceRegistry.reg[i].piece.removePath();
+      }
+    }
+
+    void generateStandardPieceMoves(){
       for(int i = 0; i < pieceRegistry.reg.size(); i++){
 
-        if(point == pieceRegistry.reg[i].point){
-          pieceIndex = i;
-          break;
-        }
-      }
-    }
-    return pieceIndex;
-  }
+        Piece& piece = pieceRegistry.reg[i].piece;
+        Point position = pieceRegistry.reg[i].point;
 
-  bool isSquareOccupied(Point point){
+        if(piece.team == currentTeam){
 
-    bool isOccupied = false;    
-    int pieceIndex = getPiecIndexAtPoint(point);
+          switch(piece.type){
 
-    if(pieceIndex >= 0){
-      isOccupied = true;
-    }
+            case Piece::PAWN:
 
-  return isOccupied;
-}
+              piece.moves = getPawnMoves(piece.team, position, piece.isFirstMove);
 
-  bool ifPieceHasMoves(Point point){
+            break;
 
-    bool ifPieceHasMoves = false;
+            case Piece::ROOK:
 
-    int pieceIndex = getPiecIndexAtPoint(point);
+              piece.moves = getRookMoves(piece.team, position);
 
-    if(pieceIndex >= 0){
-      if(pieceRegistry.reg[pieceIndex].piece.moves.size() > 0){
-        ifPieceHasMoves = true;
-      }
-    }   
+            break;
 
-    return ifPieceHasMoves;
-  }
+            case Piece::BISHOP:
 
-  void removeTakenPiece(Point point){
+              piece.moves = getBishopMoves(piece.team, position);
 
-    int pieceIndex = getPiecIndexAtPoint(point);
+            break;
 
-    if(pieceIndex >= 0){
-      pieceRegistry.reg.erase(pieceRegistry.reg.begin() + pieceIndex);
-    }    
-  }
+            case Piece::QUEEN:
 
-  void changeTeam(){
-    if(currentTeam == RED){
-      currentTeam = BLUE;
-    }else if(currentTeam == BLUE){
-      currentTeam = RED;
-    }
-  }
+              piece.moves = getQueenMoves(piece.team, position);
+         
+            break;
 
-  Team getPieceTeam(Point point){
+            case Piece::KNIGHT:
 
-    Team pieceTeam = Team::NONE;
+              piece.moves = getKnightMoves(piece.team, position);
 
-    int pieceIndex = getPiecIndexAtPoint(point);
+            break;
 
-    if(pieceIndex >= 0){
-      pieceTeam = pieceRegistry.reg[pieceIndex].piece.team;
-    }
+            case Piece::KING:
 
-    return pieceTeam;
-  }
+            piece.moves = getKingMoves(piece.team, position);
 
-  std::vector<Move> theFunctionToBeTested(Point start, Point stop, Team team){
-
-    Serial.println("straight line to be generated");
-
-    int squareCount = 0;
-    int xMod = 0;
-    int yMod = 0;
-    int xDifference = start.x - stop.x;
-    int yDifference = start.y - stop.y;
-    std::vector<Move> moves;
-
-    if(xDifference > 0){
-      xMod = 1;
-    }else if(xDifference < 0){
-      xMod = -1;
-    }
-
-    if(yDifference > 0){
-      yMod = 1;
-    }else if(yDifference < 0){
-      yMod = -1;
-    }
-
-    xDifference = abs(xDifference);
-    yDifference = abs(yDifference);
-
-    if(xDifference > yDifference){
-      squareCount = xDifference;
-    }else{
-      squareCount = yDifference;
-    }
-
-    bool pathBlocked = false;
-
-    Serial.println("point difference calculated");
-
-    Serial.print("xDifference: ");
-    Serial.println(xDifference);
-
-    Serial.print("yDifference: ");
-    Serial.println(yDifference);
-
-    Serial.print("squareCount: ");
-    Serial.println(squareCount);
-
-
-
-    for(int i = 1; i < squareCount; i++){
-
-      Point point(start.x + xMod * i, start.y + yMod * i);
-      bool pointInbounds = point.inBounds();
-
-      if(!pathBlocked && pointInbounds){
-
-        Serial.println("path not blocked and in bounds");
-
-        bool isOcuppied = isSquareOccupied(point);
-
-        if(isOcuppied){
-
-          Serial.println("point is occupied");
-
-          pathBlocked = true;
-
-          Team teamOfOcupiedPiece = getPieceTeam(point);
-
-          if(team != teamOfOcupiedPiece){
-            Serial.println("point is contested");
-            moves.push_back(Move(point, Move::CONTESTED));
+            break;
           }
-        }else{
-
-          Serial.println("point is uncontested");
-          moves.push_back(Move(point, Move::UNCONTESTED));
         }
       }
     }
 
-    Serial.println("straight Moves Generated");
-
-
-    return moves;
-  }
-
-  std::vector<Move> generateStraightMoves(Team team, Point startingPoint){
-    std::vector<Move> moves;
-
-    moves = theFunctionToBeTested(startingPoint, Point(8, startingPoint.y), team);
-
-    return moves;
-  }
-
-  std::vector<Move> getPawnMoves(Team team, Point point, bool isFirstMove){
-
-    std::vector<Move> moves;
-    int x = point.x;
-    int y = point.y;
-
-    std::vector<Point> testPoints;
-
-    if(team == RED){
-      testPoints.push_back(Point(x + 1, y + 1));
-      testPoints.push_back(Point(x -1, y + 1));
-      testPoints.push_back(Point(x, y + 1));
-      testPoints.push_back(Point(x, y + 2));
-    }else if(team == BLUE){
-      testPoints.push_back(Point(x + 1, y - 1));
-      testPoints.push_back(Point(x -1, y - 1));
-      testPoints.push_back(Point(x, y - 1));
-      testPoints.push_back(Point(x, y - 2));
-    }
-
-    int testPieceIndex = -1;
-
-    for(int i = 0; i < 2; i++){
-
-      if(isSquareOccupied(testPoints[i])){
-
-        testPieceIndex = getPiecIndexAtPoint(testPoints[i]);
-
-        if((pieceRegistry.reg[testPieceIndex].piece.team != currentTeam) && (testPoints[i].inBounds()) ){
-
-          if(pieceRegistry.reg[testPieceIndex].piece.type == Piece::KING){
-
-            moves.push_back(Move(testPoints[i], Move::INCHECK));
-          }else{
-
-            moves.push_back(Move(testPoints[i], Move::CONTESTED));
-          }      
-        }
-      }
-    }
-
-    if((!isSquareOccupied(testPoints[2])) && (testPoints[2].inBounds())){
-
-      moves.push_back(Move(testPoints[2], Move::UNCONTESTED));
-
-      if((!isSquareOccupied(testPoints[3])) && (isFirstMove)){
-
-        moves.push_back(Move(testPoints[3], Move::UNCONTESTED));  
-      }
-    }
-
-    return moves;
-  }
-
-  std::vector<Move> getRookMoves(Team team, Point point){
-    std::vector<Move> moves = generateStraightMoves(team, point);
-
-    return moves;
-  }
-
-  void updatePieceMoves(){
-
-    Serial.println("Move generation start");
-
-    for(int i = 0; i < pieceRegistry.reg.size(); i++){
-      Point position = pieceRegistry.reg[i].point;
-
-      if(pieceRegistry.reg[i].piece.team == currentTeam){
-
-        switch(pieceRegistry.reg[i].piece.type){
-
-          case Piece::PAWN:
-
-            pieceRegistry.reg[i].piece.moves = getPawnMoves(pieceRegistry.reg[i].piece.team, position, pieceRegistry.reg[i].piece.isFirstMove);
-
-          break;
-
-          case Piece::ROOK:
-
-            pieceRegistry.reg[i].piece.moves = getRookMoves(pieceRegistry.reg[i].piece.team, position);
-
-          break;
-        }
+    bool ifDiagnal(Piece::Type pieceType){
+      if((pieceType == Piece::Type::BISHOP) || (pieceType == Piece::Type::QUEEN)){
+        return true;
       }else{
-        pieceRegistry.reg[i].piece.moves.clear();
+        return false;
       }
     }
-    Serial.println("Move generation complete");
-  }
 
-  int getPieceCount(){
-    return pieceRegistry.reg.size();
-  }
-
-  Point getPiecePosition(int pieceIndex){
-    return pieceRegistry.reg[pieceIndex].point;
-  }
-
-  std::vector<Move> getPieceMoves(Point point){
-
-    int pieceIndex = getPiecIndexAtPoint(point);
-
-    std::vector<Move> pieceMoves;
-
-    if(pieceIndex >= 0){
-      pieceMoves = pieceRegistry.reg[pieceIndex].piece.moves;
+    bool ifStraight(Piece::Type pieceType){
+      if((pieceType == Piece::Type::ROOK) || (pieceType == Piece::Type::QUEEN)){
+        return true;
+      }else{
+        return false;
+      }
     }
 
-    return pieceMoves;
-  }
+    void getStraightPinnedPath(std::vector<Point> path){
 
-  void movePiece(Point startingPosition, Point newPosition){
+      Chess::PieceRegistry::Entry* blockingPiece;
+      Chess::PieceRegistry::Entry* attackingPiece;
+      int friendlyPieceCount = 0;
 
-    int pieceIndex = getPiecIndexAtPoint(startingPosition);
+      for(int i = 0; i < path.size(); i++){
 
-    if(pieceIndex >= 0){
-      pieceRegistry.reg[pieceIndex].point = newPosition;
+        if(isOccupied(path[i])){
 
-      pieceRegistry.reg[pieceIndex].piece.isFirstMove = false;
-    }    
-  }
+          if(!isOccupiedByOpponent(path[i], currentTeam)){
 
-  Chess(){    
-  }
+            friendlyPieceCount = friendlyPieceCount + 1;
+
+            blockingPiece = getPieceAtPoint(path[i]);
+          }
+
+          if(isOccupiedByOpponent(path[i], currentTeam) && (friendlyPieceCount == 1)){
+
+            Chess::Piece::Type pieceType = getPieceType(path[i]);
+
+            if( ifStraight(pieceType)){
+
+              attackingPiece = getPieceAtPoint(path[i]);
+
+              std::vector<Move> newPath;
+
+              for(int i = 0; i < path.size(); i++){
+
+                for(int j = 0; j < blockingPiece->piece.moves.size(); j++){
+
+                  if(path[i] == blockingPiece->piece.moves[j].position){
+
+                    newPath.push_back(blockingPiece->piece.moves[j]);
+                  }
+                }
+              }
+
+              blockingPiece->piece.moves = newPath;
+            }else{
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    void getDiagnalPinnedPath(std::vector<Point> path){
+
+      Chess::PieceRegistry::Entry* blockingPiece;
+      Chess::PieceRegistry::Entry* attackingPiece;
+      int friendlyPieceCount = 0;
+
+      for(int i = 0; i < path.size(); i++){
+
+        if(isOccupied(path[i])){
+
+          if(!isOccupiedByOpponent(path[i], currentTeam)){
+
+            friendlyPieceCount = friendlyPieceCount + 1;
+
+            blockingPiece = getPieceAtPoint(path[i]);
+          }
+
+          if(isOccupiedByOpponent(path[i], currentTeam) && (friendlyPieceCount == 1)){
+
+            Chess::Piece::Type pieceType = getPieceType(path[i]);
+
+            if( ifDiagnal(pieceType)){
+
+              attackingPiece = getPieceAtPoint(path[i]);
+
+              std::vector<Move> newPath;
+
+              for(int i = 0; i < path.size(); i++){
+
+                for(int j = 0; j < blockingPiece->piece.moves.size(); j++){
+
+                  if(path[i] == blockingPiece->piece.moves[j].position){
+
+                    newPath.push_back(blockingPiece->piece.moves[j]);
+                  }
+                }
+              }
+
+              blockingPiece->piece.moves = newPath;
+            }else{
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    void getPinMoves(){
+
+      Point kingPos;
+
+      if(currentTeam == Team::RED){
+
+        kingPos = redKing.point;
+      }else{
+
+        kingPos = blueKing.point;
+      }
+
+      getStraightPinnedPath(generateStraightLine(kingPos, Point(kingPos.x,8), true));
+      getStraightPinnedPath(generateStraightLine(kingPos, Point(kingPos.x,1), true));
+      getStraightPinnedPath(generateStraightLine(kingPos, Point(8,kingPos.y), true));
+      getStraightPinnedPath(generateStraightLine(kingPos, Point(1,kingPos.y), true));
+
+      getDiagnalPinnedPath(generateDiagnalLine(kingPos, 1, 1));
+      getDiagnalPinnedPath(generateDiagnalLine(kingPos, 1, -1));
+      getDiagnalPinnedPath(generateDiagnalLine(kingPos, -1, 1));
+      getDiagnalPinnedPath(generateDiagnalLine(kingPos, -1, -1));
+    }
+
+    void update(){
+      generateStandardPieceMoves();
+
+      //getPinMoves();
+    }
+
+    int getPieceCount(){
+      return pieceRegistry.reg.size();
+    }
+
+    Point getPiecePosition(int pieceIndex){
+      return pieceRegistry.reg[pieceIndex].point;
+    }
+
+    void movePieceToPoint(Point pieceCurrentPos, Point newPos){
+      int pieceIndex = getPiecIndexAtPoint(pieceCurrentPos);
+
+      if(pieceIndex >= 0){
+        pieceRegistry.reg[pieceIndex].point = newPos;
+
+        pieceRegistry.reg[pieceIndex].piece.isFirstMove = false;
+      }
+    }
+
+    Chess(){
+    }
 };
 
 class Board{
@@ -601,7 +1130,8 @@ class Board{
     awaitingPiecePickup,
     awaitingPiecePlacement,
     incorrectPiecePickup,
-    incorrectPiecePlacement
+    incorrectPiecePlacement,
+    awaitingCapture
   };
 
   int getLedAddress(Point point){//sets leds layed out in a zigzag fashion
@@ -631,6 +1161,7 @@ class Board{
     for(int i = 0; i < moves.size(); i++){
 
       switch(moves[i].type){
+
         case Chess::Move::UNCONTESTED:
           setLedColor(moves[i].position, CRGB::Green, leds);
         break;
@@ -644,16 +1175,27 @@ class Board{
 
   void clearLeds(CRGB leds[64]){
 
-    for(int i = 0; i < 64; i++){
-      leds[i] = CRGB::Black;
+    for(int x = 1; x <= 8; x++){
+
+      for(int y = 1; y <= 8; y++){
+
+        setLedColor(Point(x,y), CRGB::Black, leds);
+      }
     }
   }
 
   BoardState boardState = awaitingInitialPieceSetup;
-  std::vector<Chess::Move> currentPieceMoves;
-  Point currentPiecePosition = Point(-1,-1);
-  int incorrectPieceIndex = -1;
+  BoardState previousBoardState;
+  Chess::PieceRegistry::Entry* currentPiece;
+  std::vector<Point> incorrectPieceIndex;
   Chess chess;
+
+  void changeBoardState(BoardState newBoardState){
+
+    previousBoardState = boardState;
+
+    boardState = newBoardState;
+  }
 
   bool isPointOccupied(Point point, std::array<std::bitset<8>, 8> current){
     bool isOccupied = false;
@@ -664,13 +1206,13 @@ class Board{
 
     return isOccupied;
   }
-
+ 
   void awaitingInitialPieceSetupRoutine(CRGB leds[64], std::array<std::bitset<8>, 8> sensorState){
 
     clearLeds(leds);
 
     int pieceCount = chess.getPieceCount();
-
+   
     int piecesNotSetup = pieceCount;
 
     if(pieceCount > 0){
@@ -697,55 +1239,93 @@ class Board{
       FastLED.show();
 
       if(piecesNotSetup == 0){
-        boardState = awaitingPiecePickup;
-        chess.updatePieceMoves();
+        changeBoardState(awaitingPiecePickup);
+        chess.update();
       }
     }
   }
 
   void awaitingPiecePickupRoutine(SquareState change, CRGB leds[64]){
 
-    currentPiecePosition = Point(-1,-1);
-    incorrectPieceIndex = -1;
+    bool changeIsValid = true;
 
-    bool isChangedPointOccupied = chess.isSquareOccupied(change.point);
+    bool isChangedPointOccupied = chess.isOccupied(change.point);
 
-    Serial.println("piece pickup routine");
-
-    if(isChangedPointOccupied){
+    if(isChangedPointOccupied && change.behavior == falling){
       bool ifPieceHasMoves = chess.ifPieceHasMoves(change.point);
 
       if(ifPieceHasMoves){
-        currentPiecePosition = change.point;
-        boardState = awaitingPiecePlacement;
+        changeBoardState(awaitingPiecePlacement);
 
-        currentPieceMoves = chess.getPieceMoves(change.point);
-        displayMoves(currentPieceMoves, leds);
+        currentPiece = chess.getPieceAtPoint(change.point);
+
+        currentPiece->piece.moves.size();
+
+        for(int i = 0; i < currentPiece->piece.moves.size(); i++){
+          currentPiece->piece.moves[i].print();
+        }
+
+        displayMoves(currentPiece->piece.moves, leds);
 
         FastLED.show();
 
       }else{
-        incorrectPieceIndex = chess.getPiecIndexAtPoint(change.point);
-        boardState = incorrectPiecePickup;
+        incorrectPieceIndex.push_back(change.point);
+
+        changeBoardState(incorrectPiecePickup);
 
         setLedColor(change.point, CRGB::Red, leds);
 
         FastLED.show();
-
-        //change square to red
       }
+    }else{
+      incorrectPieceIndex.push_back(change.point);
+
+      changeBoardState(incorrectPiecePickup);
+
+      setLedColor(change.point, CRGB::Red, leds);
+
+      FastLED.show();
     }
   }
 
   void incorrectPiecePickupRoutine(SquareState change, CRGB leds[64]){
 
-    Point position = chess.getPiecePosition(incorrectPieceIndex);
+    for(int i = 0; i < incorrectPieceIndex.size(); i++){
 
-    if(change.point == position){
-      incorrectPieceIndex = -1;
+      if(change.point == incorrectPieceIndex[i]){
 
-      boardState = awaitingPiecePickup;
-      setLedColor(change.point, CRGB::Black, leds);
+        incorrectPieceIndex.erase(incorrectPieceIndex.begin() + i);
+
+        changeBoardState(previousBoardState);
+        setLedColor(change.point, CRGB::Black, leds);    
+      }
+    }
+    FastLED.show();    
+  }
+
+  void completeTurnRoutine(CRGB leds[64]){
+    currentPiece = NULL;
+    chess.clearMoves();
+    chess.changeTeam();    
+    chess.update();
+    changeBoardState(awaitingPiecePickup);
+    clearLeds(leds);
+    FastLED.show();
+  }
+
+  void awaitingCaptureRoutine(SquareState change, CRGB leds[64]){
+
+    if((change.point == currentPiece->point) && (change.behavior == rising)){
+
+      completeTurnRoutine(leds);
+    }else{
+
+      incorrectPieceIndex.push_back(change.point);
+
+      changeBoardState(incorrectPiecePickup);
+
+      setLedColor(change.point, CRGB::Red, leds);
 
       FastLED.show();
     }
@@ -753,27 +1333,48 @@ class Board{
 
   void awaitingPiecePlacementRoutine(SquareState change, CRGB leds[64]){
 
-    for(int i = 0; i < currentPieceMoves.size(); i++){
+    if(currentPiece != NULL){
 
-      if( (change.point == currentPieceMoves[i].position)){
+      bool moveIsValid = false;
 
-        int moveIndex = i;
+      for(int moveIndex = 0; moveIndex < currentPiece->piece.moves.size(); moveIndex++){
 
-        if((currentPieceMoves[moveIndex].type == Chess::Move::UNCONTESTED)){
-          chess.movePiece(currentPiecePosition, change.point);
-          chess.changeTeam();
-          chess.updatePieceMoves();
-          boardState = awaitingPiecePickup;
-          clearLeds(leds);
-          FastLED.show();
-          break;
-        }else if((currentPieceMoves[moveIndex].type == Chess::Move::CONTESTED)){
-          chess.removeTakenPiece(change.point);
-          currentPieceMoves[moveIndex].type = Chess::Move::UNCONTESTED;
-          break;
-        }     
+        if((change.point == currentPiece->piece.moves[moveIndex].position || change.point == currentPiece->point)){
+
+          moveIsValid = true;
+
+          if(change.point == currentPiece->point){
+            changeBoardState(awaitingPiecePickup);
+            clearLeds(leds);
+            FastLED.show();
+
+          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::UNCONTESTED)){
+            chess.movePieceToPoint(currentPiece->point, change.point);
+            completeTurnRoutine(leds);
+            break;
+          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::CONTESTED)){
+            chess.movePieceToPoint(currentPiece->point, change.point);
+            changeBoardState(awaitingCapture);
+            chess.removeTakenPiece(change.point);
+            clearLeds(leds);
+            setLedColor(change.point, CRGB::Green, leds);
+            FastLED.show();
+            break;
+          }
+        }
       }
-    }
+
+      if(!moveIsValid){
+
+        incorrectPieceIndex.push_back(change.point);
+
+        changeBoardState(incorrectPiecePickup);
+
+        setLedColor(change.point, CRGB::Red, leds);
+
+        FastLED.show();
+      }
+    }    
   }
 
   void processInput(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous, CRGB leds[64]){
@@ -810,8 +1411,107 @@ class Board{
 
         break;
 
+        case awaitingCapture:
+
+          awaitingCaptureRoutine(change, leds);
+
+        break;
       }
     }
+  }
+};
+
+class Display{
+  public:
+
+  struct Pixel{
+    public:
+    Point point;
+    CRGB color;
+
+    Pixel(Point _point, CRGB _color){
+
+      point = _point;
+      color = _color;
+    }
+  };
+
+  struct Frame{
+    public:
+    std::vector<Pixel> pixelList;
+  };
+
+  struct Animation{
+    public:
+    std::vector<Frame> frameList;
+
+    Animation(Point point, std::vector<Point> path){
+      std::vector<std::vector<Point>> ring = generateConcentricRings(point);
+
+      frameList.resize(ring.size());
+
+      for(int i = 0; i < ring.size(); i++){
+
+        for(int j = 0; j < ring[i].size(); j++){
+
+          for(int k = 0; k < path.size(); k++){
+
+            if(ring[i][j] == path[k]){
+
+              frameList[i].pixelList.push_back(Pixel(path[k], CRGB::Red));
+            }
+          }
+        }
+      }
+    }
+  };
+
+  unsigned long animationDelay = 1000;
+  unsigned long previousMillis;
+  int frameCounter = 0;
+  std::deque<Animation> animation;
+  bool isValid = false;
+
+
+  void addAnimation(Point point, std::vector<Point> path){
+    std::vector<std::vector<Point>> ring = generateConcentricRings(point);
+
+    animation.push_back(Animation(point, path));    
+
+    isValid = true;
+  }
+
+  void displayFrame(int frameNum, Board board,  CRGB leds[64]){
+
+    int pixelCount = animation[0].frameList[frameNum].pixelList.size();
+
+    if(pixelCount > 0){
+
+      for(int i = 0; i < pixelCount; i++){
+
+        board.setLedColor(animation[0].frameList[frameNum].pixelList[i].point, animation[0].frameList[frameNum].pixelList[i].color, leds);
+      }
+    }
+  }
+
+  void run(Board board, CRGB leds[64], unsigned long currentMillis){
+    if(((currentMillis - previousMillis) > animationDelay) && (isValid)){
+
+      previousMillis = currentMillis;
+
+      displayFrame(frameCounter, board, leds);
+
+      FastLED.show();
+
+      if(frameCounter == (animation[0].frameList.size() - 1)){
+        isValid = false;
+      }
+
+      frameCounter = frameCounter + 1;
+    }
+  }
+
+  void clear(){
   }
 };
 
@@ -821,9 +1521,10 @@ std::array<std::bitset<8>, 8> previousHallArrayState;
 HallArray hallArray;
 Board board;
 CRGB leds[64];
+Display display;
+
 
 void setup() {
-
   Serial.begin(115200);
 
   Serial.println("setup begin");
@@ -846,7 +1547,7 @@ void setup() {
   previousHallArrayState = hallArray.read();
 
   FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, 64);
-  FastLED.setBrightness(25);
+  FastLED.setBrightness(10);
 
   delay(150);
 
@@ -862,19 +1563,56 @@ void setup() {
  
   FastLED.show();
 
-  board.awaitingInitialPieceSetupRoutine(leds, currentHallArrayState);
- 
+  //board.awaitingInitialPieceSetupRoutine(leds, currentHallArrayState);
+
   Serial.println("Setup complete");
+
+  /*
+  
+  std::vector<std::vector<Point>> rings = generateConcentricRings(Point(2,7));
+
+  std::vector<CRGB> colors = {CRGB::Red, CRGB::Orange, CRGB::Yellow, CRGB::Blue, CRGB::Green, CRGB::Red, CRGB::Orange, CRGB::Yellow, CRGB::Blue, CRGB::Green};
+
+  for(int i = 0; i < rings.size(); i++){
+
+    for(int j = 0; j < rings[i].size(); j++){
+
+      board.setLedColor(rings[i][j], colors[i], leds);        
+    }
+
+    FastLED.show();
+
+    delay(100);
+  }*/
+
+  delay(800);   
+
+  Point point = Point(3,3);
+  std::vector<Point> path;
+
+  std::vector<Point> pathA = generateStraightLine(Point(3,3), Point(3,8), true);
+  std::vector<Point> pathB = generateStraightLine(Point(3,3), Point(3,1), true);
+  std::vector<Point> pathC = generateStraightLine(Point(3,3), Point(1,3), true);
+  std::vector<Point> pathD = generateStraightLine(Point(3,3), Point(8,3), true);
+
+  path.insert(path.end(), pathA.begin(), pathA.end());
+  path.insert(path.end(), pathB.begin(), pathB.end());
+  path.insert(path.end(), pathC.begin(), pathC.end());
+  path.insert(path.end(), pathD.begin(), pathD.end());
+
+  display.addAnimation(point, path);
+  //display.run(board, leds);
 }
 
-void loop(){
-
+void loop(){/*  
   currentHallArrayState = hallArray.read();
 
   if(previousHallArrayState != currentHallArrayState){
 
-      board.processInput(currentHallArrayState, previousHallArrayState, leds);
+    board.processInput(currentHallArrayState, previousHallArrayState, leds);
 
-      previousHallArrayState = currentHallArrayState;
-    }
+    previousHallArrayState = currentHallArrayState;
+  }*/
+
+  display.run(board, leds, millis());
 }
