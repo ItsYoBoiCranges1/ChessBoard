@@ -1522,7 +1522,7 @@ HallArray hallArray;
 Board board;
 CRGB leds[64];
 Display display;
-
+/*But a test*/
 
 void setup() {
   Serial.begin(115200);
