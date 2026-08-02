@@ -284,6 +284,28 @@ std::vector<std::vector<Point>> generateConcentricRings(Point center){
   return rings;
 }
 
+int getLedAddress(Point point){//sets leds layed out in a zigzag fashion
+
+  int x = point.x;
+  int y = point.y;
+
+  int ledArrayPos = ((y - 1) * 8);
+
+  if(y % 2 == 0){
+    ledArrayPos = ledArrayPos + (8 - x);
+  }else{
+    ledArrayPos = ledArrayPos + (x - 1);
+  }
+  return ledArrayPos;
+}
+
+void setLedColor(Point point, CRGB color, CRGB leds[64]){
+
+  int ledAddress = getLedAddress(point);
+
+  leds[ledAddress] = color;
+}
+
 class Chess{
     public:
 
@@ -420,7 +442,7 @@ class Chess{
         reg.push_back(PieceRegistry::Entry(Point(7,2), Piece(Piece::KING, BLUE)));
 
         reg.push_back(PieceRegistry::Entry(Point(8,3), Piece(Piece::BISHOP, BLUE)));
-        reg.push_back(PieceRegistry::Entry(Point(6,8), Piece(Piece::BISHOP, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(6,8), Piece(Piece::QUEEN, RED)));
       }
 
       /*
@@ -1049,7 +1071,7 @@ class Chess{
     void update(){
       generateStandardPieceMoves();
 
-      //getPinMoves();
+      getPinMoves();
     }
 
     int getPieceCount(){
@@ -1072,6 +1094,112 @@ class Chess{
 
     Chess(){
     }
+};
+
+class Display{
+  public:
+
+  struct Pixel{
+    public:
+    Point point;
+    CRGB color;
+
+    Pixel(Point _point, CRGB _color){
+
+      point = _point;
+      color = _color;
+    }
+  };
+
+  struct Frame{
+    public:
+    std::vector<Pixel> pixelList;
+  };
+
+  struct Animation{
+    public:
+    std::vector<Frame> frameList;
+
+    Animation(Point point, std::vector<Chess::Move> path){
+      std::vector<std::vector<Point>> ring = generateConcentricRings(point);
+      CRGB color;
+
+      frameList.resize(ring.size());
+
+      for(int i = 0; i < ring.size(); i++){
+
+        for(int j = 0; j < ring[i].size(); j++){
+
+          for(int k = 0; k < path.size(); k++){
+
+            if(ring[i][j] == path[k].position){         
+              
+              switch(path[k].type){
+                case Chess::Move::UNCONTESTED:
+                  color = CRGB::Green;
+                break;
+
+                case Chess::Move::CONTESTED :
+                  color = CRGB::Red;
+                break;
+              }
+
+              frameList[i].pixelList.push_back(Pixel(path[k].position, color));
+            }
+          }
+        }
+      }
+    }
+  };
+
+  unsigned long animationDelay = 5;
+  unsigned long previousMillis;
+  int frameCounter = 0;
+  std::deque<Animation> animation;
+  bool isValid = false;
+
+  void addAnimation(Point point, std::vector<Chess::Move> path){
+    std::vector<std::vector<Point>> ring = generateConcentricRings(point);
+
+    animation.push_back(Animation(point, path));    
+
+    isValid = true;
+  }
+
+  void displayFrame(int frameNum,  CRGB leds[64]){
+
+    int pixelCount = animation[0].frameList[frameNum].pixelList.size();
+
+    if(pixelCount > 0){
+
+      for(int i = 0; i < pixelCount; i++){
+
+        setLedColor(animation[0].frameList[frameNum].pixelList[i].point, animation[0].frameList[frameNum].pixelList[i].color, leds);
+      }
+    }
+  }
+
+  void clear(){
+    animation.pop_back();
+  }
+
+  void run( CRGB leds[64], unsigned long currentMillis){
+    if(((currentMillis - previousMillis) > animationDelay) && (isValid)){
+
+      previousMillis = currentMillis;
+      displayFrame(frameCounter, leds);
+      FastLED.show();
+
+      if(frameCounter == (animation[0].frameList.size() - 1)){
+        isValid = false;
+        clear();
+        frameCounter = 0;
+      }else{
+
+        frameCounter = frameCounter + 1;
+      }      
+    }
+  }
 };
 
 class Board{
@@ -1134,45 +1262,6 @@ class Board{
     awaitingCapture
   };
 
-  int getLedAddress(Point point){//sets leds layed out in a zigzag fashion
-
-    int x = point.x;
-    int y = point.y;
-
-    int ledArrayPos = ((y - 1) * 8);
-
-    if(y % 2 == 0){
-      ledArrayPos = ledArrayPos + (8 - x);
-    }else{
-      ledArrayPos = ledArrayPos + (x - 1);
-    }
-    return ledArrayPos;
-  }
-
-  void setLedColor(Point point, CRGB color, CRGB leds[64]){
-
-    int ledAddress = getLedAddress(point);
-
-    leds[ledAddress] = color;
-  }
-
-  void displayMoves(std::vector<Chess::Move> moves, CRGB leds[64]){
-
-    for(int i = 0; i < moves.size(); i++){
-
-      switch(moves[i].type){
-
-        case Chess::Move::UNCONTESTED:
-          setLedColor(moves[i].position, CRGB::Green, leds);
-        break;
-
-        case Chess::Move::CONTESTED:
-          setLedColor(moves[i].position, CRGB::Red, leds);
-        break;
-      }
-    }
-  }
-
   void clearLeds(CRGB leds[64]){
 
     for(int x = 1; x <= 8; x++){
@@ -1189,6 +1278,7 @@ class Board{
   Chess::PieceRegistry::Entry* currentPiece;
   std::vector<Point> incorrectPieceIndex;
   Chess chess;
+  Display display;
 
   void changeBoardState(BoardState newBoardState){
 
@@ -1265,7 +1355,8 @@ class Board{
           currentPiece->piece.moves[i].print();
         }
 
-        displayMoves(currentPiece->piece.moves, leds);
+        //displayMoves(currentPiece->piece.moves, leds);
+        display.addAnimation(currentPiece->point, currentPiece->piece.moves);
 
         FastLED.show();
 
@@ -1421,108 +1512,12 @@ class Board{
   }
 };
 
-class Display{
-  public:
-
-  struct Pixel{
-    public:
-    Point point;
-    CRGB color;
-
-    Pixel(Point _point, CRGB _color){
-
-      point = _point;
-      color = _color;
-    }
-  };
-
-  struct Frame{
-    public:
-    std::vector<Pixel> pixelList;
-  };
-
-  struct Animation{
-    public:
-    std::vector<Frame> frameList;
-
-    Animation(Point point, std::vector<Point> path){
-      std::vector<std::vector<Point>> ring = generateConcentricRings(point);
-
-      frameList.resize(ring.size());
-
-      for(int i = 0; i < ring.size(); i++){
-
-        for(int j = 0; j < ring[i].size(); j++){
-
-          for(int k = 0; k < path.size(); k++){
-
-            if(ring[i][j] == path[k]){
-
-              frameList[i].pixelList.push_back(Pixel(path[k], CRGB::Red));
-            }
-          }
-        }
-      }
-    }
-  };
-
-  unsigned long animationDelay = 1000;
-  unsigned long previousMillis;
-  int frameCounter = 0;
-  std::deque<Animation> animation;
-  bool isValid = false;
-
-
-  void addAnimation(Point point, std::vector<Point> path){
-    std::vector<std::vector<Point>> ring = generateConcentricRings(point);
-
-    animation.push_back(Animation(point, path));    
-
-    isValid = true;
-  }
-
-  void displayFrame(int frameNum, Board board,  CRGB leds[64]){
-
-    int pixelCount = animation[0].frameList[frameNum].pixelList.size();
-
-    if(pixelCount > 0){
-
-      for(int i = 0; i < pixelCount; i++){
-
-        board.setLedColor(animation[0].frameList[frameNum].pixelList[i].point, animation[0].frameList[frameNum].pixelList[i].color, leds);
-      }
-    }
-  }
-
-  void run(Board board, CRGB leds[64], unsigned long currentMillis){
-    if(((currentMillis - previousMillis) > animationDelay) && (isValid)){
-
-      previousMillis = currentMillis;
-
-      displayFrame(frameCounter, board, leds);
-
-      FastLED.show();
-
-      if(frameCounter == (animation[0].frameList.size() - 1)){
-        isValid = false;
-      }
-
-      frameCounter = frameCounter + 1;
-    }
-  }
-
-  void clear(){
-  }
-};
-
 std::array<std::bitset<8>, 8> currentHallArrayState;
 std::array<std::bitset<8>, 8> previousHallArrayState;
 
 HallArray hallArray;
 Board board;
 CRGB leds[64];
-Display display;
-/*But a test*/
 
 void setup() {
   Serial.begin(115200);
@@ -1563,48 +1558,22 @@ void setup() {
  
   FastLED.show();
 
-  //board.awaitingInitialPieceSetupRoutine(leds, currentHallArrayState);
+  board.awaitingInitialPieceSetupRoutine(leds, currentHallArrayState);
 
   Serial.println("Setup complete");
 
   /*
-  
-  std::vector<std::vector<Point>> rings = generateConcentricRings(Point(2,7));
 
-  std::vector<CRGB> colors = {CRGB::Red, CRGB::Orange, CRGB::Yellow, CRGB::Blue, CRGB::Green, CRGB::Red, CRGB::Orange, CRGB::Yellow, CRGB::Blue, CRGB::Green};
+  board.chess.update();
 
-  for(int i = 0; i < rings.size(); i++){
+  Chess::PieceRegistry::Entry& piece = board.chess.pieceRegistry.reg[3];  
 
-    for(int j = 0; j < rings[i].size(); j++){
+  display.addAnimation(piece.point, piece.piece.moves);
 
-      board.setLedColor(rings[i][j], colors[i], leds);        
-    }
-
-    FastLED.show();
-
-    delay(100);
-  }*/
-
-  delay(800);   
-
-  Point point = Point(3,3);
-  std::vector<Point> path;
-
-  std::vector<Point> pathA = generateStraightLine(Point(3,3), Point(3,8), true);
-  std::vector<Point> pathB = generateStraightLine(Point(3,3), Point(3,1), true);
-  std::vector<Point> pathC = generateStraightLine(Point(3,3), Point(1,3), true);
-  std::vector<Point> pathD = generateStraightLine(Point(3,3), Point(8,3), true);
-
-  path.insert(path.end(), pathA.begin(), pathA.end());
-  path.insert(path.end(), pathB.begin(), pathB.end());
-  path.insert(path.end(), pathC.begin(), pathC.end());
-  path.insert(path.end(), pathD.begin(), pathD.end());
-
-  display.addAnimation(point, path);
-  //display.run(board, leds);
+  */
 }
 
-void loop(){/*  
+void loop(){
   currentHallArrayState = hallArray.read();
 
   if(previousHallArrayState != currentHallArrayState){
@@ -1612,7 +1581,7 @@ void loop(){/*
     board.processInput(currentHallArrayState, previousHallArrayState, leds);
 
     previousHallArrayState = currentHallArrayState;
-  }*/
+  }
 
-  display.run(board, leds, millis());
+  board.display.run(leds, millis());
 }
