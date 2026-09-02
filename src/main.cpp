@@ -1606,6 +1606,8 @@ CRGB leds[64];
 
 //icr returns array of chessSquareStates
 
+//icr creation
+
 void setup() {
   Serial.begin(115200);
 
