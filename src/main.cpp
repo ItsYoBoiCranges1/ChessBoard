@@ -18,8 +18,79 @@ int sh_inh = D10;//pin15 on 74HC165
 int nQH = D7;//pin7 on 74HC165
 int clk = D2;//pin2 on 74HC165
 
+struct Point{
+  int x = -1;
+  int y = -1;
+
+  Point(int _x, int _y){
+    x = _x;
+    y = _y;
+  }
+
+  Point(){}
+
+  bool operator==(const Point& other) const{
+    return (x == other.x) && (y == other.y);
+  }
+
+  bool operator!=(const Point& other) const{
+    return (x != other.x) || (y != other.y);
+  }
+
+  bool inBounds(){
+    bool inBound = false;
+
+    if(((x >= 1) && (x <= 8)) && ( (y >= 1) && (y <= 8))){
+      inBound = true;
+    }
+
+    return inBound;
+  }
+
+  void print(){
+
+    Serial.print("x: ");
+    Serial.print(x);
+
+    Serial.print(" y: ");
+    Serial.print(y);
+
+  }
+};
+
+enum InputBehavior{
+    rising,
+    falling
+};
+
+struct InputState{
+  Point point;
+  InputBehavior behavior;
+
+  InputState(Point _point, InputBehavior _behavior){
+    point = _point;
+    behavior = _behavior;
+
+    Serial.print(" point changed: ");
+    point.print();
+
+    if(behavior == InputBehavior::rising){
+      Serial.println(" rising");
+    }else{
+      Serial.println(" falling");
+    }
+  }
+
+  bool operator==(const InputState& other) const{
+    return (point == other.point) && (behavior == other.behavior);
+  }
+};
+
 class HallArray{
     private:
+
+    std::array<std::bitset<8>, 8> current;//stored in hallArray
+    std::array<std::bitset<8>, 8> previous;//stored in hallArray
 
     void setColumn(int columNum){
 
@@ -61,9 +132,7 @@ class HallArray{
    
       return row;
     }
-   
-    public:
-   
+
     std::array<std::bitset<8>, 8> read(){
 
       std::array<std::bitset<8>, 8> state;
@@ -78,47 +147,34 @@ class HallArray{
       }
       return state;
     }
-  };
 
-struct Point{
-  int x = -1;
-  int y = -1;
+    public:
 
-  Point(int _x, int _y){
-    x = _x;
-    y = _y;
-  }
+    std::vector<InputState> getInputChanges(){//goes to HallArray
 
-  Point(){}
+    std::vector<InputState> state;
+    InputBehavior behavior;
 
-  bool operator==(const Point& other) const{
-    return (x == other.x) && (y == other.y);
-  }
+    current = read();
 
-  bool operator!=(const Point& other) const{
-    return (x != other.x) || (y != other.y);
-  }
-
-  bool inBounds(){
-    bool inBound = false;
-
-    if(((x >= 1) && (x <= 8)) && ( (y >= 1) && (y <= 8))){
-      inBound = true;
+    for(int x = 0; x < 8; x++){
+      for(int y = 0; y < 8; y++){
+        if(current[x][y] != previous[x][y]){
+          if(current[x][y] > previous[x][y]){
+            behavior = rising;
+          }else{
+            behavior = falling;
+          }
+          state.push_back(InputState(Point(x +1,y +1),behavior));
+        }
+      }
     }
 
-    return inBound;
+    previous = current;
+
+    return state;
   }
-
-  void print(){
-
-    Serial.print("x: ");
-    Serial.print(x);
-
-    Serial.print(" y: ");
-    Serial.print(y);
-
-  }
-};
+  };
 
 std::vector<Point> generateDiagnalLine(Point start, int xMod, int yMod){
   std::vector<Point> line;
@@ -215,26 +271,6 @@ std::vector<Point> generateConcentricRing(Point center, int step){
   points.push_back(Point(center.x - step, center.y - step));
   points.push_back(Point(center.x + step, center.y - step));
 
-  /*
-
-  if(corners[0].inBounds()){
-    ring.push_back(corners[0]);
-  }
-
-  if(corners[1].inBounds()){
-    ring.push_back(corners[1]);
-  }
-
-  if(corners[2].inBounds()){
-    ring.push_back(corners[2]);
-  }
-
-  if(corners[3].inBounds()){
-    ring.push_back(corners[3]);
-  }
-
-  */
-
   std::vector<Point> sideA = generateStraightLine(points[0], points[1], false);
   std::vector<Point> sideB = generateStraightLine(points[1], points[2], false);
   std::vector<Point> sideC = generateStraightLine(points[2], points[3], false);
@@ -317,12 +353,12 @@ class Chess{
     struct Move{
 
       enum Type{
+        UNDO,
         UNCONTESTED,
         CONTESTED,
-        INCHECK,
-        PIN,
-        CASTLESELECT,
-        CASTLEPOS
+        CASTLE,
+        REDINNIT,
+        BLUEINNIT
     };
 
       Type type;
@@ -361,12 +397,6 @@ class Chess{
             Serial.println("CONTESTED");
 
           break;
-
-          case INCHECK:
-
-            Serial.println("INCHECK");
-
-          break;
         }
       }
     };
@@ -388,6 +418,7 @@ class Chess{
       Team team;
       bool isFirstMove = true;
 
+      /**/
       Piece(Type _type, Team _team) : type(_type), team(_team) {}
       Piece() = default;
       Piece(const Piece& other) = default;
@@ -426,7 +457,13 @@ class Chess{
 
         Entry(Point _point, Piece _piece){
           point = _point;
-          piece = _piece;        
+          piece = _piece;
+
+          if(piece.team == Team::RED){
+            //piece.moves.push_back(Move(point, Move::Type::REDINNIT));
+          }else if(piece.team == Team::BLUE){
+            //piece.moves.push_back(Move(point, Move::Type::BLUEINNIT));
+          }
         }
 
         Entry(){}
@@ -439,12 +476,12 @@ class Chess{
       std::deque<Entry> reg;
 
       PieceRegistry(){
-        reg.push_back(PieceRegistry::Entry(Point(4,1), Piece(Piece::KING, RED)));
-        reg.push_back(PieceRegistry::Entry(Point(5,8), Piece(Piece::KING, BLUE)));
-        reg.push_back(PieceRegistry::Entry(Point(1,8), Piece(Piece::ROOK, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(1,1), Piece(Piece::KING, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(8,8), Piece(Piece::KING, BLUE)));
+        /*reg.push_back(PieceRegistry::Entry(Point(1,8), Piece(Piece::ROOK, BLUE)));
         reg.push_back(PieceRegistry::Entry(Point(8,8), Piece(Piece::ROOK, BLUE)));
         reg.push_back(PieceRegistry::Entry(Point(1,1), Piece(Piece::ROOK, RED)));
-        reg.push_back(PieceRegistry::Entry(Point(8,1), Piece(Piece::ROOK, RED)));/*
+        reg.push_back(PieceRegistry::Entry(Point(8,1), Piece(Piece::ROOK, RED)));
 
         reg.push_back(PieceRegistry::Entry(Point(1,2), Piece(Piece::PAWN, RED)));
         reg.push_back(PieceRegistry::Entry(Point(2,2), Piece(Piece::PAWN, RED)));
@@ -483,10 +520,23 @@ class Chess{
       }
     };
 
+    enum GameState{//goes to interactable chess routine
+      awaitingInitialPieceSetup,
+      awaitingPiecePickup,
+      awaitingMoveCompletion,
+      awaitingCapture,
+      awaitingCastleCompletion
+    };
+
     PieceRegistry pieceRegistry;
     Team currentTeam = RED;
     PieceRegistry::Entry& redKing = pieceRegistry.reg[0];
     PieceRegistry::Entry&  blueKing = pieceRegistry.reg[1];
+    //GameState gameState = awaitingInitialPieceSetup; //goes to chess
+    GameState gameState = awaitingPiecePickup;
+    GameState previousGameState;//goes to chess
+    Chess::PieceRegistry::Entry* currentPiece;//goes to chess
+    Chess::PieceRegistry::Entry* castledPiece;//goes to chess
 
     int getPiecIndexAtPoint(Point point){
       int pieceIndex = -1;
@@ -509,7 +559,7 @@ class Chess{
 
         int pieceIndex = - 1;
 
-        int pieceIndex = getPiecIndexAtPoint(point);
+        pieceIndex = getPiecIndexAtPoint(point);
 
         if(pieceIndex >= 0){
           ifOccupied = true;
@@ -928,7 +978,7 @@ class Chess{
       }
     }
 
-    bool ifDiagnal(Piece::Type pieceType){
+    bool isDiagnalPiece(Piece::Type pieceType){
       if((pieceType == Piece::Type::BISHOP) || (pieceType == Piece::Type::QUEEN)){
         return true;
       }else{
@@ -936,7 +986,7 @@ class Chess{
       }
     }
 
-    bool ifStraight(Piece::Type pieceType){
+    bool isStraightPiece(Piece::Type pieceType){
       if((pieceType == Piece::Type::ROOK) || (pieceType == Piece::Type::QUEEN)){
         return true;
       }else{
@@ -965,7 +1015,7 @@ class Chess{
 
             Chess::Piece::Type pieceType = getPieceType(path[i]);
 
-            if( ifStraight(pieceType)){
+            if( isStraightPiece(pieceType)){
 
               attackingPiece = getPieceAtPoint(path[i]);
 
@@ -1012,7 +1062,7 @@ class Chess{
 
             Chess::Piece::Type pieceType = getPieceType(path[i]);
 
-            if( ifDiagnal(pieceType)){
+            if( isDiagnalPiece(pieceType)){
 
               attackingPiece = getPieceAtPoint(path[i]);
 
@@ -1078,16 +1128,16 @@ class Chess{
 
         if(pathIsClear){//add castle moves to each piece
 
-          king.piece.moves.push_back(Move(rook.point, Move::CASTLESELECT));
-          rook.piece.moves.push_back(Move(king.point, Move::CASTLESELECT));
+          king.piece.moves.push_back(Move(rook.point, Move::CASTLE));
+          rook.piece.moves.push_back(Move(king.point, Move::CASTLE));
 
           if(pathSize == 1){
 
-            king.piece.moves.push_back(Move(Point(king.point.x + 2, king.point.x), Move::CASTLEPOS));
-            rook.piece.moves.push_back(Move(Point(rook.point.x - 2, rook.point.x), Move::CASTLEPOS));
+            king.piece.moves.push_back(Move(Point(king.point.x + 2, king.point.x), Move::UNCONTESTED));
+            rook.piece.moves.push_back(Move(Point(rook.point.x - 2, rook.point.x), Move::UNCONTESTED));
           }else{
-            king.piece.moves.push_back(Move(Point(king.point.x - 2, king.point.x), Move::CASTLEPOS));
-            rook.piece.moves.push_back(Move(Point(rook.point.x + 3, rook.point.x), Move::CASTLEPOS));
+            king.piece.moves.push_back(Move(Point(king.point.x - 2, king.point.x), Move::UNCONTESTED));
+            rook.piece.moves.push_back(Move(Point(rook.point.x + 3, rook.point.x), Move::UNCONTESTED));
           }
         }
       }
@@ -1136,7 +1186,7 @@ class Chess{
 
       for(int i = 0; i < piece->piece.moves.size(); i++){
 
-        if(piece->piece.moves[i].type == Move::CASTLEPOS){
+        if(piece->piece.moves[i].type == Move::UNCONTESTED){
 
           movePieceToPoint(piece->point, piece->piece.moves[i].position);
           break;
@@ -1145,6 +1195,235 @@ class Chess{
     }
 
     Chess(){
+      generateStandardPieceMoves();
+    }
+
+    void changeGameState(GameState newGameState){//goes to chess
+
+      previousGameState = gameState;
+
+      gameState = newGameState;
+    }
+
+    bool isPieceSetup(Chess::PieceRegistry::Entry* piece){
+
+      bool pieceIsSetup = true;
+
+      if(piece->piece.moves.size() > 0){
+
+        Move::Type moveType = piece->piece.moves[0].type;
+
+        if(moveType == Move::REDINNIT || moveType == Move::BLUEINNIT){
+          pieceIsSetup = false;
+        }
+      }      
+
+      return pieceIsSetup;
+    }
+    
+    bool awaitingInitialPieceSetupRoutine(InputState change){//goes to interactable chess routine
+
+      bool isValidSensorChange = false;
+
+      int pieceCount = getPieceCount();
+    
+      int piecesNotSetup = pieceCount;
+
+      if(pieceCount > 0){
+
+        /*
+
+        for(int i = 0; i < pieceCount; i++){
+
+          Point point = getPiecePosition(i);
+          bool ifOccupied = isPointOccupied(point, sensorState);
+          Chess::Team team = getPieceTeam(point);
+
+          if(ifOccupied){
+            piecesNotSetup = piecesNotSetup - 1;
+            setLedColor(point, CRGB::Black, leds);
+          }else{
+            if(team == Chess::Team::RED){
+              setLedColor(point, CRGB::Red, leds);
+            }
+            if(team == Chess::Team::BLUE){
+              setLedColor(point, CRGB::Blue, leds);
+            }
+          }
+        }
+
+        FastLED.show();
+
+        */
+
+        if(piecesNotSetup == 0){
+          changeGameState(awaitingPiecePickup);
+          generateMoves();
+        }
+      }
+
+      return isValidSensorChange;
+    }
+
+    bool awaitingPiecePickupRoutine(InputState change){//goes to interactable chess routine
+
+    bool isValidSensorChange = false;
+
+    bool isChangedPointOccupied = ifOccupied(change.point);
+
+      if(isChangedPointOccupied && change.behavior == falling){
+
+      if(ifPieceHasMoves(change.point)){
+
+        changeGameState(awaitingMoveCompletion);
+
+        currentPiece = getPieceAtPoint(change.point);
+        
+        isValidSensorChange = true;
+
+        //displayMoves(currentPiece->piece.moves, leds);
+        //display.addAnimation(currentPiece->point, currentPiece->piece.moves);
+        //FastLED.show();
+
+        Serial.println("proper piece picked up");
+
+      }
+    }
+    return isValidSensorChange;
+  }
+
+    void completeTurnRoutine(){//goes to interactable chess routine
+    currentPiece = NULL;
+    pieceRegistry.clearMoves();
+    changeTeam();    
+    generateMoves();
+    changeGameState(awaitingPiecePickup);
+    //clearLeds(leds);
+    //FastLED.show();
+  }
+
+    bool awaitingCaptureRoutine(InputState change){//goes to interactable chess routine
+
+    bool isInputValid = false;
+
+    if((change.point == currentPiece->point) && (change.behavior == rising)){
+
+      isInputValid = true;
+
+      completeTurnRoutine();
+    }
+
+    return isInputValid;
+  }
+
+    bool awaitingMoveCompletionRoutine(InputState change){//goes to interactable chess routine
+
+    bool isInputValid = false;
+
+    if(currentPiece != NULL){
+
+      for(int moveIndex = 0; moveIndex < currentPiece->piece.moves.size(); moveIndex++){
+
+        if((change.point == currentPiece->piece.moves[moveIndex].position || change.point == currentPiece->point)){
+
+          isInputValid = true;
+
+          if(change.point == currentPiece->point){
+            changeGameState(awaitingPiecePickup);
+            //clearLeds(leds);
+            //FastLED.show();
+
+          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::UNCONTESTED)){
+            movePieceToPoint(currentPiece->point, change.point);
+            completeTurnRoutine();
+            break;
+          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::CONTESTED)){
+            movePieceToPoint(currentPiece->point, change.point);
+            changeGameState(awaitingCapture);
+            removeTakenPiece(change.point);
+            //clearLeds(leds);
+            //setLedColor(change.point, CRGB::Green, leds);
+            //FastLED.show();
+            break;
+          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::CASTLE)){
+            castledPiece = getPieceAtPoint(change.point);
+            movePieceToPoint(castledPiece->point, currentPiece->point);
+            movePieceToPoint(currentPiece->point, change.point);
+            changeGameState(awaitingCastleCompletion);
+            //clearLeds(leds);
+            //setLedColor(castledPiece->point, CRGB::Green, leds);
+            //setLedColor(currentPiece->point, CRGB::Green, leds);
+            //FastLED.show();
+            break;
+          }
+        }
+      }
+    }
+    return isInputValid;
+  }
+
+    bool awaitingCastleCompletionRoutine(InputState change){//goes to interactable chess routine
+
+      bool isInputValid = false;
+
+      return isInputValid;
+  }
+
+    public:
+
+    bool processInput(InputState change){//returns true or false if the input is valid
+
+      bool isValidInput = false;
+
+      switch(gameState){
+
+        case awaitingInitialPieceSetup:
+
+          isValidInput = awaitingInitialPieceSetupRoutine(change);
+
+        break;
+
+        case awaitingPiecePickup:
+
+          isValidInput = awaitingPiecePickupRoutine(change);
+
+        break;
+
+        case awaitingMoveCompletion:
+
+          isValidInput = awaitingMoveCompletionRoutine(change);
+
+        break;
+
+        case awaitingCapture:
+
+          isValidInput = awaitingCaptureRoutine(change);
+
+        break;
+
+        case awaitingCastleCompletion:
+
+          isValidInput = awaitingCastleCompletionRoutine(change);
+
+        break;
+      }
+
+      return isValidInput;
+    }
+
+    std::vector<Move> getCurrentPieceMoves(){
+
+      std::vector<Move> moves;
+
+      if(currentPiece != NULL){
+        return currentPiece->piece.moves;
+      }else{
+        return moves;
+      }
+    }
+
+    GameState getGameState(){
+      return gameState;
     }
 };
 
@@ -1202,6 +1481,18 @@ class Display{
         }
       }
     }
+
+    Animation(){
+      Frame frame;
+
+      for(int x = 0; x < 8; x++){
+        for(int y = 0; y < 8; y++){
+          frame.pixelList.push_back(Pixel(Point(x,y), CRGB::Black));
+        }
+      }
+
+      frameList.push_back(frame);
+    }
   };
 
   unsigned long animationDelay = 5;
@@ -1231,382 +1522,73 @@ class Display{
     }
   }
 
-  void clear(){
-    animation.pop_back();
+  void clear(CRGB leds[64]){
+    for(int i = 0; i < 64; i++){
+      leds[i] = CRGB::Black;
+    }
+  }
+
+  void addClearAnimation(CRGB leds[64]){
+    animation.push_back(Animation());
+
+    isValid = true;
   }
 
   void run( CRGB leds[64], unsigned long currentMillis){
     if(((currentMillis - previousMillis) > animationDelay) && (isValid)){
 
       previousMillis = currentMillis;
+
       displayFrame(frameCounter, leds);
       FastLED.show();
 
       if(frameCounter == (animation[0].frameList.size() - 1)){
         isValid = false;
-        clear();
+        animation.pop_back();
         frameCounter = 0;
+
       }else{
 
         frameCounter = frameCounter + 1;
-      }      
+      } 
     }
   }
 };
 
-class Board{
-  public:
 
-  enum SensorBehavior{//goes to HallArray
-      rising,
-      falling
-  };
+void clearDisplay(CRGB leds[64]){
+  for(int i = 0; i < 64; i++){
+    leds[i] = CRGB::Black;
+  }
+}
 
-  struct SquareState{//goes to HallArray
-    Point point;
-    SensorBehavior behavior;
+void displayPath(std::vector<Chess::Move> path, CRGB leds[64]){
+  for(int i = 0; i < path.size(); i++){
 
-    SquareState(Point _point, SensorBehavior _behavior){
-      point = _point;
-      behavior = _behavior;
+    CRGB color;
 
-      Serial.print("point changed: ");
-      point.print();
+    switch(path[i].type){
+      case Chess::Move::Type::UNCONTESTED:
+        color = CRGB::Green;
+      break;
 
-      if(behavior == SensorBehavior::rising){
-        Serial.println(" rising");
-      }else{
-        Serial.println(" falling");
-      }
+      case Chess::Move::Type::CONTESTED:
+        color = CRGB::Red;
+      break;
     }
 
-    bool operator==(const SquareState& other) const{
-      return (point == other.point) && (behavior == other.behavior);
-    }
-  };
-
-  std::vector<SquareState> getInputChanges(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous){//goes to HallArray
-
-    std::vector<SquareState> state;
-    SensorBehavior behavior;
-
-    for(int x = 0; x < 8; x++){
-      for(int y = 0; y < 8; y++){
-        if(current[x][y] != previous[x][y]){
-          if(current[x][y] > previous[x][y]){
-            behavior = rising;
-          }else{
-            behavior = falling;
-          }
-          state.push_back(SquareState(Point(x +1,y +1),behavior));
-        }
-      }
-    }
-    return state;
+    setLedColor(path[i].position, color, leds);
   }
+}
 
-  enum GameState{//goes to interactable chess routine
-    awaitingInitialPieceSetup,
-    awaitingPiecePickup,
-    awaitingMoveCompletion,
-    incorrectPiecePickup,
-    incorrectPiecePlacement,
-    awaitingCapture,
-    awaitingCastleCompletion
-  };
 
-  void clearLeds(CRGB leds[64]){
-
-    for(int x = 1; x <= 8; x++){
-      for(int y = 1; y <= 8; y++){
-        setLedColor(Point(x,y), CRGB::Black, leds);
-      }
-    }
-  }
-
-  GameState gameState = awaitingInitialPieceSetup; //goes to interactable chess routine
-  GameState previousGameState;//goes to interactable chess routine
-  Chess::PieceRegistry::Entry* currentPiece;//goes to interactable chess routine
-  Chess::PieceRegistry::Entry* castledPiece;//goes to interactable chess routine
-  std::vector<Point> incorrectPieceIndex;//goes to interactable chess routine
-  Chess chess;//goes to main
-  Display display;//goes to main
-
-  void changeGameState(GameState newGameState){//goes to chess
-
-    previousGameState = gameState;
-
-    gameState = newGameState;
-  }
-
-  bool isPointOccupied(Point point, std::array<std::bitset<8>, 8> current){//stays in board
-    bool ifOccupied = false;
-
-    if(current[point.x - 1][point.y - 1] == 1){
-      ifOccupied = true;
-    }
-
-    return ifOccupied;
-  }
- 
-  void awaitingInitialPieceSetupRoutine(CRGB leds[64], std::array<std::bitset<8>, 8> sensorState){//goes to interactable chess routine
-
-    clearLeds(leds);
-
-    int pieceCount = chess.getPieceCount();
-   
-    int piecesNotSetup = pieceCount;
-
-    if(pieceCount > 0){
-
-      for(int i = 0; i < pieceCount; i++){
-
-        Point point = chess.getPiecePosition(i);
-        bool ifOccupied = isPointOccupied(point, sensorState);
-        Chess::Team team = chess.getPieceTeam(point);
-
-        if(ifOccupied){
-          piecesNotSetup = piecesNotSetup - 1;
-          setLedColor(point, CRGB::Black, leds);
-        }else{
-          if(team == Chess::Team::RED){
-            setLedColor(point, CRGB::Red, leds);
-          }
-          if(team == Chess::Team::BLUE){
-            setLedColor(point, CRGB::Blue, leds);
-          }
-        }
-      }
-
-      FastLED.show();
-
-      if(piecesNotSetup == 0){
-        changeGameState(awaitingPiecePickup);
-        chess.generateMoves();
-      }
-    }
-  }
-
-  void awaitingPiecePickupRoutine(SquareState change, CRGB leds[64]){//goes to interactable chess routine
-
-    bool changeIsValid = true;
-
-    bool isChangedPointOccupied = chess.ifOccupied(change.point);
-
-    if(isChangedPointOccupied && change.behavior == falling){
-      bool ifPieceHasMoves = chess.ifPieceHasMoves(change.point);
-
-      if(ifPieceHasMoves){
-        changeGameState(awaitingMoveCompletion);
-
-        currentPiece = chess.getPieceAtPoint(change.point);
-
-        currentPiece->piece.moves.size();
-
-        for(int i = 0; i < currentPiece->piece.moves.size(); i++){
-          currentPiece->piece.moves[i].print();
-        }
-
-        //displayMoves(currentPiece->piece.moves, leds);
-        display.addAnimation(currentPiece->point, currentPiece->piece.moves);
-
-        FastLED.show();
-
-      }else{
-        incorrectPieceIndex.push_back(change.point);
-
-        changeGameState(incorrectPiecePickup);
-
-        setLedColor(change.point, CRGB::Red, leds);
-
-        FastLED.show();
-      }
-    }else{
-      incorrectPieceIndex.push_back(change.point);
-
-      changeGameState(incorrectPiecePickup);
-
-      setLedColor(change.point, CRGB::Red, leds);
-
-      FastLED.show();
-    }
-  }
-
-  void incorrectPiecePickupRoutine(SquareState change, CRGB leds[64]){//goes to interactable chess routine
-
-    for(int i = 0; i < incorrectPieceIndex.size(); i++){
-
-      if(change.point == incorrectPieceIndex[i]){
-
-        incorrectPieceIndex.erase(incorrectPieceIndex.begin() + i);
-
-        changeGameState(previousGameState);
-        setLedColor(change.point, CRGB::Black, leds);    
-      }
-    }
-    FastLED.show();    
-  }
-
-  void completeTurnRoutine(CRGB leds[64]){//goes to interactable chess routine
-    currentPiece = NULL;
-    chess.pieceRegistry.clearMoves();
-    chess.changeTeam();    
-    chess.generateMoves();
-    changeGameState(awaitingPiecePickup);
-    clearLeds(leds);
-    FastLED.show();
-  }
-
-  void awaitingCaptureRoutine(SquareState change, CRGB leds[64]){//goes to interactable chess routine
-
-    if((change.point == currentPiece->point) && (change.behavior == rising)){
-
-      completeTurnRoutine(leds);
-    }else{
-
-      incorrectPieceIndex.push_back(change.point);
-
-      changeGameState(incorrectPiecePickup);
-
-      setLedColor(change.point, CRGB::Red, leds);
-
-      FastLED.show();
-    }
-  }
-
-  void awaitingMoveCompletionRoutine(SquareState change, CRGB leds[64]){//goes to interactable chess routine
-
-    if(currentPiece != NULL){
-
-      bool moveIsValid = false;
-
-      for(int moveIndex = 0; moveIndex < currentPiece->piece.moves.size(); moveIndex++){
-
-        if((change.point == currentPiece->piece.moves[moveIndex].position || change.point == currentPiece->point)){
-
-          moveIsValid = true;
-
-          if(change.point == currentPiece->point){
-            changeGameState(awaitingPiecePickup);
-            clearLeds(leds);
-            FastLED.show();
-
-          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::UNCONTESTED)){
-            chess.movePieceToPoint(currentPiece->point, change.point);
-            completeTurnRoutine(leds);
-            break;
-          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::CONTESTED)){
-            chess.movePieceToPoint(currentPiece->point, change.point);
-            changeGameState(awaitingCapture);
-            chess.removeTakenPiece(change.point);
-            clearLeds(leds);
-            setLedColor(change.point, CRGB::Green, leds);
-            FastLED.show();
-            break;
-          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::CASTLESELECT)){
-            castledPiece = chess.getPieceAtPoint(change.point);
-            chess.movePieceToPoint(castledPiece->point, currentPiece->point);
-            chess.movePieceToPoint(currentPiece->point, change.point);
-            changeGameState(awaitingCastleCompletion);
-            clearLeds(leds);
-            setLedColor(castledPiece->point, CRGB::Green, leds);
-            setLedColor(currentPiece->point, CRGB::Green, leds);
-            FastLED.show();
-            break;
-          }
-        }
-      }
-
-      if(!moveIsValid){
-
-        incorrectPieceIndex.push_back(change.point);
-
-        changeGameState(incorrectPiecePickup);
-
-        setLedColor(change.point, CRGB::Red, leds);
-
-        FastLED.show();
-      }
-    }    
-  }
-
-  void awaitingCastleCompletionRoutine(SquareState change, CRGB leds[64], std::array<std::bitset<8>, 8> sensorState){//goes to interactable chess routine
-    bool pieceAIsPlaced = isPointOccupied(currentPiece->point, sensorState);
-    bool pieceBIsPlaced = isPointOccupied(castledPiece->point, sensorState);
-
-    if(pieceAIsPlaced && pieceBIsPlaced){
-      completeTurnRoutine(leds);
-    }
-  }
-
-  void processInput(std::array<std::bitset<8>, 8> current, std::array<std::bitset<8>, 8> previous, CRGB leds[64]){//main function of icr
-
-    std::vector<SquareState> inputChanges = getInputChanges(current,previous);//goes to hallarray
-
-    if(inputChanges.size() > 0){
-
-      SquareState change = inputChanges[0];
-
-      switch(gameState){
-
-        case awaitingInitialPieceSetup:
-
-          awaitingInitialPieceSetupRoutine(leds, current);
-
-        break;
-
-        case awaitingPiecePickup:
-
-          awaitingPiecePickupRoutine(change, leds);
-
-        break;
-
-        case incorrectPiecePickup:
-
-          incorrectPiecePickupRoutine(change, leds);
-
-        break;
-
-        case awaitingMoveCompletion:
-
-          awaitingMoveCompletionRoutine(change, leds);
-
-        break;
-
-        case awaitingCapture:
-
-          awaitingCaptureRoutine(change, leds);
-
-        break;
-
-        case awaitingCastleCompletion:
-
-          awaitingCastleCompletionRoutine(change, leds, current);
-
-        break;
-      }
-    }
-  }
-};
-
-std::array<std::bitset<8>, 8> currentHallArrayState;
-std::array<std::bitset<8>, 8> previousHallArrayState;
-
+std::vector<InputState> sensorChange;
+std::vector<Chess::Move> moves;
+Chess::GameState gameState;
 HallArray hallArray;
-Board board;
-CRGB leds[64]; 
-
-//interactable chess routine
-//icr
-
-//current = readInput();
-//inputChange = getInputChange(previous, current)
-//output = icr(gameState, inputChange, time)
-//setOutput(output)
-
-//icr returns array of chessSquareStates
-
-//icr creation
+Chess chess;
+CRGB leds[64];
+Display display;
 
 void setup() {
   Serial.begin(115200);
@@ -1628,7 +1610,7 @@ void setup() {
   pinMode(clk, OUTPUT);
   pinMode(nQH, INPUT_PULLUP);
 
-  previousHallArrayState = hallArray.read();
+  //previousHallArrayState = hallArray.read();
 
   FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, 64);
   FastLED.setBrightness(10);
@@ -1647,20 +1629,32 @@ void setup() {
  
   FastLED.show();
 
-  board.awaitingInitialPieceSetupRoutine(leds, currentHallArrayState);
+  //board.awaitingInitialPieceSetupRoutine(leds, currentHallArrayState);
 
   Serial.println("Setup complete");
 }
 
 void loop(){
-  currentHallArrayState = hallArray.read();
+  sensorChange = hallArray.getInputChanges();
 
-  if(previousHallArrayState != currentHallArrayState){
+  if(sensorChange.size() > 0){
 
-    board.processInput(currentHallArrayState, previousHallArrayState, leds);
+    if(chess.processInput(sensorChange[0])){
+      moves = chess.getCurrentPieceMoves();
+      gameState = chess.gameState;
 
-    previousHallArrayState = currentHallArrayState;
+      clearDisplay(leds);
+
+      if(moves.size() > 0){
+        //display.clear(leds);
+        //display.addAnimation(sensorChange[0].point, moves);
+        
+        displayPath(moves, leds);
+      }
+      FastLED.show();
+    }
+
+    sensorChange.clear();
   }
-  /*Branch Test*/
-  board.display.run(leds, millis());
+  //display.run(leds, millis());
 }
