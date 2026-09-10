@@ -1555,6 +1555,33 @@ class Display{
   }
 };
 
+
+void clearDisplay(CRGB leds[64]){
+  for(int i = 0; i < 64; i++){
+    leds[i] = CRGB::Black;
+  }
+}
+
+void displayPath(std::vector<Chess::Move> path, CRGB leds[64]){
+  for(int i = 0; i < path.size(); i++){
+
+    CRGB color;
+
+    switch(path[i].type){
+      case Chess::Move::Type::UNCONTESTED:
+        color = CRGB::Green;
+      break;
+
+      case Chess::Move::Type::CONTESTED:
+        color = CRGB::Red;
+      break;
+    }
+
+    setLedColor(path[i].position, color, leds);
+  }
+}
+
+
 std::vector<InputState> sensorChange;
 std::vector<Chess::Move> moves;
 Chess::GameState gameState;
@@ -1616,15 +1643,18 @@ void loop(){
       moves = chess.getCurrentPieceMoves();
       gameState = chess.gameState;
 
-      if(moves.size() > 0 && gameState != Chess::GameState::awaitingPiecePickup){
-        display.clear(leds);
-        display.addAnimation(sensorChange[0].point, moves);
-      }else{
-        display.addClearAnimation(leds);
+      clearDisplay(leds);
+
+      if(moves.size() > 0){
+        //display.clear(leds);
+        //display.addAnimation(sensorChange[0].point, moves);
+        
+        displayPath(moves, leds);
       }
+      FastLED.show();
     }
 
     sensorChange.clear();
   }
-  display.run(leds, millis());
+  //display.run(leds, millis());
 }
