@@ -341,8 +341,8 @@ void setLedColor(Point point, CRGB color, CRGB leds[64]){
   leds[ledAddress] = color;
 }
 
-class Chess{
-    public:
+namespace Chess{
+    //public:
 
     enum Team{
       RED,
@@ -535,7 +535,7 @@ class Chess{
     //GameState gameState = awaitingInitialPieceSetup; //goes to chess
     GameState gameState = awaitingPiecePickup;
     GameState previousGameState;//goes to chess
-    Chess::PieceRegistry::Entry* currentPiece;//goes to chess
+    Chess::PieceRegistry::Entry* pieceRegEntryInPlay;//goes to chess
     Chess::PieceRegistry::Entry* castledPiece;//goes to chess
 
     int getPiecIndexAtPoint(Point point){
@@ -645,9 +645,9 @@ class Chess{
 
         if(isOccupiedByOpponent(point, team)){
 
-          int occupyingPieceIndex = getPiecIndexAtPoint(point);
+          Piece::Type occupyingPieceType = getPieceType(point);
        
-          if(pieceRegistry.reg[occupyingPieceIndex].piece.type == Piece::KING){
+          if(occupyingPieceType == Piece::KING){
             isOccupiedByOpponentKing = true;
           }
         }
@@ -655,11 +655,12 @@ class Chess{
       return isOccupiedByOpponentKing;
     }
 
-    PieceRegistry::Entry* getPieceAtPoint(Point point){
-      for(int i = 0; i < pieceRegistry.reg.size(); i++){
-        if(point == pieceRegistry.reg[i].point){
-          return &pieceRegistry.reg[i];
-        }
+    PieceRegistry::Entry* getRegEntryAtPoint(Point point){
+
+      int pieceIndex = getPiecIndexAtPoint(point);
+
+      if(pieceIndex >= 0){
+        return &pieceRegistry.reg[pieceIndex];
       }
     }
    
@@ -996,8 +997,8 @@ class Chess{
 
     void getStraightPinnedPath(std::vector<Point> path){
 
-      Chess::PieceRegistry::Entry* blockingPiece;
-      Chess::PieceRegistry::Entry* attackingPiece;
+      Chess::PieceRegistry::Entry* blockingRegEntry;
+      Chess::PieceRegistry::Entry* attackingRegEntry;
       int friendlyPieceCount = 0;
 
       for(int i = 0; i < path.size(); i++){
@@ -1008,7 +1009,7 @@ class Chess{
 
             friendlyPieceCount = friendlyPieceCount + 1;
 
-            blockingPiece = getPieceAtPoint(path[i]);
+            blockingRegEntry = getRegEntryAtPoint(path[i]);
           }
 
           if(isOccupiedByOpponent(path[i], currentTeam) && (friendlyPieceCount == 1)){
@@ -1017,22 +1018,22 @@ class Chess{
 
             if( isStraightPiece(pieceType)){
 
-              attackingPiece = getPieceAtPoint(path[i]);
+              attackingRegEntry = getRegEntryAtPoint(path[i]);
 
               std::vector<Move> newPath;
 
               for(int i = 0; i < path.size(); i++){
 
-                for(int j = 0; j < blockingPiece->piece.moves.size(); j++){
+                for(int j = 0; j < blockingRegEntry->piece.moves.size(); j++){
 
-                  if(path[i] == blockingPiece->piece.moves[j].position){
+                  if(path[i] == blockingRegEntry->piece.moves[j].position){
 
-                    newPath.push_back(blockingPiece->piece.moves[j]);
+                    newPath.push_back(blockingRegEntry->piece.moves[j]);
                   }
                 }
               }
 
-              blockingPiece->piece.moves = newPath;
+              blockingRegEntry->piece.moves = newPath;
             }else{
               break;
             }
@@ -1043,8 +1044,8 @@ class Chess{
 
     void getDiagnalPinnedPath(std::vector<Point> path){
 
-      Chess::PieceRegistry::Entry* blockingPiece;
-      Chess::PieceRegistry::Entry* attackingPiece;
+      Chess::PieceRegistry::Entry* blockingRegEntry;
+      Chess::PieceRegistry::Entry* attackingRegEntry;
       int friendlyPieceCount = 0;
 
       for(int i = 0; i < path.size(); i++){
@@ -1055,7 +1056,7 @@ class Chess{
 
             friendlyPieceCount = friendlyPieceCount + 1;
 
-            blockingPiece = getPieceAtPoint(path[i]);
+            blockingRegEntry = getRegEntryAtPoint(path[i]);
           }
 
           if(isOccupiedByOpponent(path[i], currentTeam) && (friendlyPieceCount == 1)){
@@ -1064,22 +1065,22 @@ class Chess{
 
             if( isDiagnalPiece(pieceType)){
 
-              attackingPiece = getPieceAtPoint(path[i]);
+              attackingRegEntry = getRegEntryAtPoint(path[i]);
 
               std::vector<Move> newPath;
 
               for(int i = 0; i < path.size(); i++){
 
-                for(int j = 0; j < blockingPiece->piece.moves.size(); j++){
+                for(int j = 0; j < blockingRegEntry->piece.moves.size(); j++){
 
-                  if(path[i] == blockingPiece->piece.moves[j].position){
+                  if(path[i] == blockingRegEntry->piece.moves[j].position){
 
-                    newPath.push_back(blockingPiece->piece.moves[j]);
+                    newPath.push_back(blockingRegEntry->piece.moves[j]);
                   }
                 }
               }
 
-              blockingPiece->piece.moves = newPath;
+              blockingRegEntry->piece.moves = newPath;
             }else{
               break;
             }
@@ -1182,21 +1183,21 @@ class Chess{
 
     void movePieceToCastlePos(Point piecePos){//probably stupid idk lol
 
-      PieceRegistry::Entry* piece = getPieceAtPoint(piecePos);
+      PieceRegistry::Entry* regEntry = getRegEntryAtPoint(piecePos);
 
-      for(int i = 0; i < piece->piece.moves.size(); i++){
+      for(int i = 0; i < regEntry->piece.moves.size(); i++){
 
-        if(piece->piece.moves[i].type == Move::UNCONTESTED){
+        if(regEntry->piece.moves[i].type == Move::UNCONTESTED){
 
-          movePieceToPoint(piece->point, piece->piece.moves[i].position);
+          movePieceToPoint(regEntry->point, regEntry->piece.moves[i].position);
           break;
         }
       }
     }
 
-    Chess(){
-      generateStandardPieceMoves();
-    }
+    //Chess(){
+    //  generateStandardPieceMoves();
+    //}
 
     void changeGameState(GameState newGameState){//goes to chess
 
@@ -1205,13 +1206,13 @@ class Chess{
       gameState = newGameState;
     }
 
-    bool isPieceSetup(Chess::PieceRegistry::Entry* piece){
+    bool isPieceSetup(Chess::Piece piece){
 
       bool pieceIsSetup = true;
 
-      if(piece->piece.moves.size() > 0){
+      if(piece.moves.size() > 0){
 
-        Move::Type moveType = piece->piece.moves[0].type;
+        Move::Type moveType = piece.moves[0].type;
 
         if(moveType == Move::REDINNIT || moveType == Move::BLUEINNIT){
           pieceIsSetup = false;
@@ -1220,43 +1221,37 @@ class Chess{
 
       return pieceIsSetup;
     }
+
+    int piecesSetup(){
+
+      int pieceCount = 0;
+
+      for(int i = 0; i < pieceRegistry.reg.size(); i++){
+        if(isPieceSetup(pieceRegistry.reg[i].piece)){
+          pieceCount = pieceCount + 1;
+        }
+      }
+
+      return pieceCount;
+    }
     
     bool awaitingInitialPieceSetupRoutine(InputState change){//goes to interactable chess routine
 
       bool isValidSensorChange = false;
 
-      int pieceCount = getPieceCount();
-    
-      int piecesNotSetup = pieceCount;
+      if(getPieceCount() > 0){
 
-      if(pieceCount > 0){
+        if(ifOccupied(change.point)){
 
-        /*
+          Chess::PieceRegistry::Entry* regEntry = getRegEntryAtPoint(change.point);
 
-        for(int i = 0; i < pieceCount; i++){
+          if(!isPieceSetup(regEntry->piece) && change.behavior == InputBehavior::rising){
 
-          Point point = getPiecePosition(i);
-          bool ifOccupied = isPointOccupied(point, sensorState);
-          Chess::Team team = getPieceTeam(point);
-
-          if(ifOccupied){
-            piecesNotSetup = piecesNotSetup - 1;
-            setLedColor(point, CRGB::Black, leds);
-          }else{
-            if(team == Chess::Team::RED){
-              setLedColor(point, CRGB::Red, leds);
-            }
-            if(team == Chess::Team::BLUE){
-              setLedColor(point, CRGB::Blue, leds);
-            }
+            regEntry->piece.moves.pop_back();
           }
         }
 
-        FastLED.show();
-
-        */
-
-        if(piecesNotSetup == 0){
+        if(piecesSetup() == 32){
           changeGameState(awaitingPiecePickup);
           generateMoves();
         }
@@ -1277,12 +1272,12 @@ class Chess{
 
         changeGameState(awaitingMoveCompletion);
 
-        currentPiece = getPieceAtPoint(change.point);
+        pieceRegEntryInPlay = getRegEntryAtPoint(change.point);
         
         isValidSensorChange = true;
 
-        //displayMoves(currentPiece->piece.moves, leds);
-        //display.addAnimation(currentPiece->point, currentPiece->piece.moves);
+        //displayMoves(pieceRegEntryInPlay->piece.moves, leds);
+        //display.addAnimation(pieceRegEntryInPlay->point, pieceRegEntryInPlay->piece.moves);
         //FastLED.show();
 
         Serial.println("proper piece picked up");
@@ -1293,7 +1288,7 @@ class Chess{
   }
 
     void completeTurnRoutine(){//goes to interactable chess routine
-    currentPiece = NULL;
+    pieceRegEntryInPlay = NULL;
     pieceRegistry.clearMoves();
     changeTeam();    
     generateMoves();
@@ -1306,7 +1301,7 @@ class Chess{
 
     bool isInputValid = false;
 
-    if((change.point == currentPiece->point) && (change.behavior == rising)){
+    if((change.point == pieceRegEntryInPlay->point) && (change.behavior == rising)){
 
       isInputValid = true;
 
@@ -1320,39 +1315,39 @@ class Chess{
 
     bool isInputValid = false;
 
-    if(currentPiece != NULL){
+    if(pieceRegEntryInPlay != NULL){
 
-      for(int moveIndex = 0; moveIndex < currentPiece->piece.moves.size(); moveIndex++){
+      for(int moveIndex = 0; moveIndex < pieceRegEntryInPlay->piece.moves.size(); moveIndex++){
 
-        if((change.point == currentPiece->piece.moves[moveIndex].position || change.point == currentPiece->point)){
+        if((change.point == pieceRegEntryInPlay->piece.moves[moveIndex].position || change.point == pieceRegEntryInPlay->point)){
 
           isInputValid = true;
 
-          if(change.point == currentPiece->point){
+          if(change.point == pieceRegEntryInPlay->point){
             changeGameState(awaitingPiecePickup);
             //clearLeds(leds);
             //FastLED.show();
 
-          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::UNCONTESTED)){
-            movePieceToPoint(currentPiece->point, change.point);
+          }else if((pieceRegEntryInPlay->piece.moves[moveIndex].type == Chess::Move::UNCONTESTED)){
+            movePieceToPoint(pieceRegEntryInPlay->point, change.point);
             completeTurnRoutine();
             break;
-          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::CONTESTED)){
-            movePieceToPoint(currentPiece->point, change.point);
+          }else if((pieceRegEntryInPlay->piece.moves[moveIndex].type == Chess::Move::CONTESTED)){
+            movePieceToPoint(pieceRegEntryInPlay->point, change.point);
             changeGameState(awaitingCapture);
             removeTakenPiece(change.point);
             //clearLeds(leds);
             //setLedColor(change.point, CRGB::Green, leds);
             //FastLED.show();
             break;
-          }else if((currentPiece->piece.moves[moveIndex].type == Chess::Move::CASTLE)){
-            castledPiece = getPieceAtPoint(change.point);
-            movePieceToPoint(castledPiece->point, currentPiece->point);
-            movePieceToPoint(currentPiece->point, change.point);
+          }else if((pieceRegEntryInPlay->piece.moves[moveIndex].type == Chess::Move::CASTLE)){
+            castledPiece = getRegEntryAtPoint(change.point);
+            movePieceToPoint(castledPiece->point, pieceRegEntryInPlay->point);
+            movePieceToPoint(pieceRegEntryInPlay->point, change.point);
             changeGameState(awaitingCastleCompletion);
             //clearLeds(leds);
             //setLedColor(castledPiece->point, CRGB::Green, leds);
-            //setLedColor(currentPiece->point, CRGB::Green, leds);
+            //setLedColor(pieceRegEntryInPlay->point, CRGB::Green, leds);
             //FastLED.show();
             break;
           }
@@ -1369,7 +1364,7 @@ class Chess{
       return isInputValid;
   }
 
-    public:
+    //public:
 
     bool processInput(InputState change){//returns true or false if the input is valid
 
@@ -1411,15 +1406,15 @@ class Chess{
       return isValidInput;
     }
 
-    std::vector<Move> getCurrentPieceMoves(){
+    std::vector<Move> getCurrentPiecePath(){
 
       std::vector<Move> moves;
 
-      if(currentPiece != NULL){
-        return currentPiece->piece.moves;
-      }else{
-        return moves;
+      if(pieceRegEntryInPlay != NULL){
+        moves =  pieceRegEntryInPlay->piece.moves;
       }
+
+      return moves;
     }
 
     GameState getGameState(){
@@ -1463,14 +1458,14 @@ class Display{
 
           for(int k = 0; k < path.size(); k++){
 
-            if(ring[i][j] == path[k].position){        
+            if(ring[i][j] == path[k].position){    
              
               switch(path[k].type){
                 case Chess::Move::UNCONTESTED:
                   color = CRGB::Green;
                 break;
 
-                case Chess::Move::CONTESTED :
+                case Chess::Move::CONTESTED:
                   color = CRGB::Red;
                 break;
               }
@@ -1528,12 +1523,6 @@ class Display{
     }
   }
 
-  void addClearAnimation(CRGB leds[64]){
-    animation.push_back(Animation());
-
-    isValid = true;
-  }
-
   void run( CRGB leds[64], unsigned long currentMillis){
     if(((currentMillis - previousMillis) > animationDelay) && (isValid)){
 
@@ -1554,7 +1543,6 @@ class Display{
     }
   }
 };
-
 
 void clearDisplay(CRGB leds[64]){
   for(int i = 0; i < 64; i++){
@@ -1581,12 +1569,9 @@ void displayPath(std::vector<Chess::Move> path, CRGB leds[64]){
   }
 }
 
-
 std::vector<InputState> sensorChange;
-std::vector<Chess::Move> moves;
 Chess::GameState gameState;
 HallArray hallArray;
-Chess chess;
 CRGB leds[64];
 Display display;
 
@@ -1629,7 +1614,7 @@ void setup() {
  
   FastLED.show();
 
-  //board.awaitingInitialPieceSetupRoutine(leds, currentHallArrayState);
+  Chess::generateStandardPieceMoves();
 
   Serial.println("Setup complete");
 }
@@ -1639,9 +1624,9 @@ void loop(){
 
   if(sensorChange.size() > 0){
 
-    if(chess.processInput(sensorChange[0])){
-      moves = chess.getCurrentPieceMoves();
-      gameState = chess.gameState;
+    if(Chess::processInput(sensorChange[0])){//if chess input is valid
+
+      std::vector<Chess::Move> moves = Chess::getCurrentPiecePath();
 
       clearDisplay(leds);
 
