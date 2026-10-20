@@ -478,9 +478,9 @@ namespace Chess{
       PieceRegistry(){
         reg.push_back(PieceRegistry::Entry(Point(1,1), Piece(Piece::KING, RED)));
         reg.push_back(PieceRegistry::Entry(Point(8,8), Piece(Piece::KING, BLUE)));
-        /*reg.push_back(PieceRegistry::Entry(Point(1,8), Piece(Piece::ROOK, BLUE)));
-        reg.push_back(PieceRegistry::Entry(Point(8,8), Piece(Piece::ROOK, BLUE)));
-        reg.push_back(PieceRegistry::Entry(Point(1,1), Piece(Piece::ROOK, RED)));
+        reg.push_back(PieceRegistry::Entry(Point(1,8), Piece(Piece::ROOK, BLUE)));
+        reg.push_back(PieceRegistry::Entry(Point(8,1), Piece(Piece::ROOK, RED)));
+        /*reg.push_back(PieceRegistry::Entry(Point(1,1), Piece(Piece::ROOK, RED)));
         reg.push_back(PieceRegistry::Entry(Point(8,1), Piece(Piece::ROOK, RED)));
 
         reg.push_back(PieceRegistry::Entry(Point(1,2), Piece(Piece::PAWN, RED)));
@@ -1158,9 +1158,9 @@ namespace Chess{
     void generateMoves(){
       generateStandardPieceMoves();
 
-      getPinMoves();
+      //getPinMoves();
 
-      generateCastleMoves();
+      //generateCastleMoves();
     }
 
     int getPieceCount(){
@@ -1235,7 +1235,7 @@ namespace Chess{
       return pieceCount;
     }
     
-    bool awaitingInitialPieceSetupRoutine(InputState change){//goes to interactable chess routine
+    bool  awaitingInitialPieceSetupRoutine(InputState change){//goes to interactable chess routine
 
       bool isValidSensorChange = false;
 
@@ -1333,9 +1333,10 @@ namespace Chess{
             completeTurnRoutine();
             break;
           }else if((pieceRegEntryInPlay->piece.moves[moveIndex].type == Chess::Move::CONTESTED)){
-            movePieceToPoint(pieceRegEntryInPlay->point, change.point);
+            
             changeGameState(awaitingCapture);
             removeTakenPiece(change.point);
+            movePieceToPoint(pieceRegEntryInPlay->point, change.point);
             //clearLeds(leds);
             //setLedColor(change.point, CRGB::Green, leds);
             //FastLED.show();
@@ -1575,6 +1576,20 @@ HallArray hallArray;
 CRGB leds[64];
 Display display;
 
+void showPath(){
+  std::vector<Chess::Move> moves = Chess::getCurrentPiecePath();
+
+  clearDisplay(leds);
+
+  if(moves.size() > 0){
+    //display.clear(leds);
+    //display.addAnimation(sensorChange[0].point, moves);
+    
+    displayPath(moves, leds);
+  }
+  FastLED.show();
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -1626,17 +1641,23 @@ void loop(){
 
     if(Chess::processInput(sensorChange[0])){//if chess input is valid
 
-      std::vector<Chess::Move> moves = Chess::getCurrentPiecePath();
+      Chess::GameState gameState = Chess::getGameState();
 
-      clearDisplay(leds);
+      switch(gameState){
 
-      if(moves.size() > 0){
-        //display.clear(leds);
-        //display.addAnimation(sensorChange[0].point, moves);
-        
-        displayPath(moves, leds);
+        case Chess::GameState::awaitingPiecePickup:
+          clearDisplay(leds);
+          FastLED.show();
+        break;
+
+        case Chess::GameState::awaitingMoveCompletion:
+          showPath();
+        break;
+
+        case Chess::GameState::awaitingCapture:
+          showPath();
+        break;
       }
-      FastLED.show();
     }
 
     sensorChange.clear();
