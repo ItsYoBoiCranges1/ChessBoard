@@ -4,6 +4,8 @@
 #include <vector>
 #include <deque>
 
+#include <BStandard.h>
+
 #define DATA_PIN D6
 
 //74HC595 connections
@@ -17,46 +19,6 @@ int sh_ld = D0;//pin1 on 74HC165
 int sh_inh = D10;//pin15 on 74HC165
 int nQH = D7;//pin7 on 74HC165
 int clk = D2;//pin2 on 74HC165
-
-struct Point{
-  int x = -1;
-  int y = -1;
-
-  Point(int _x, int _y){
-    x = _x;
-    y = _y;
-  }
-
-  Point(){}
-
-  bool operator==(const Point& other) const{
-    return (x == other.x) && (y == other.y);
-  }
-
-  bool operator!=(const Point& other) const{
-    return (x != other.x) || (y != other.y);
-  }
-
-  bool inBounds(){
-    bool inBound = false;
-
-    if(((x >= 1) && (x <= 8)) && ( (y >= 1) && (y <= 8))){
-      inBound = true;
-    }
-
-    return inBound;
-  }
-
-  void print(){
-
-    Serial.print("x: ");
-    Serial.print(x);
-
-    Serial.print(" y: ");
-    Serial.print(y);
-
-  }
-};
 
 enum InputBehavior{
     rising,
@@ -206,8 +168,6 @@ std::vector<Point> generateStraightLine(Point start, Point stop, bool isEndInclu
 
   int xMod = 0;
   int yMod = 0;
-  int xDifference = 0;
-  int yDifference = 0;
   int pointAmount = 0;
 
   if(start.x == stop.x){
@@ -1181,22 +1141,8 @@ namespace Chess{
       }
     }
 
-    void movePieceToCastlePos(Point piecePos){//probably stupid idk lol
-
-      PieceRegistry::Entry* regEntry = getRegEntryAtPoint(piecePos);
-
-      for(int i = 0; i < regEntry->piece.moves.size(); i++){
-
-        if(regEntry->piece.moves[i].type == Move::UNCONTESTED){
-
-          movePieceToPoint(regEntry->point, regEntry->piece.moves[i].position);
-          break;
-        }
-      }
-    }
-
     //Chess(){
-    //  generateStandardPieceMoves();
+    //   ();
     //}
 
     void changeGameState(GameState newGameState){//goes to chess
@@ -1235,7 +1181,7 @@ namespace Chess{
       return pieceCount;
     }
     
-    bool  awaitingInitialPieceSetupRoutine(InputState change){//goes to interactable chess routine
+    bool awaitingInitialPieceSetupRoutine(InputState change){//goes to interactable chess routine
 
       bool isValidSensorChange = false;
 
@@ -1551,7 +1497,7 @@ void clearDisplay(CRGB leds[64]){
   }
 }
 
-void displayPath(std::vector<Chess::Move> path, CRGB leds[64]){
+void displayPath(std::vector<Chess::Move> path, CRGB leds[64]){ //temporary until animated displays are working
   for(int i = 0; i < path.size(); i++){
 
     CRGB color;
