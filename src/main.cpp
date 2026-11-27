@@ -1466,12 +1466,12 @@ void displayPath(std::vector<Chess::Move> path, CRGB leds[64]){ //temporary unti
 }
 
 enum SystemState{
-  setup,
+  boardSetup,
   nominal,
   error
 };
 
-SystemState systemState = SystemState::setup;
+SystemState systemState = SystemState::boardSetup;
 std::vector<InputState> sensorChange;
 Chess::GameState gameState;
 HallArray hallArray;
@@ -1564,7 +1564,7 @@ void chessRoutine(){
   }
 }
 
-void setup() {
+void setup(){
   Serial.begin(115200);
 
   Serial.println("setup begin");
@@ -1615,7 +1615,7 @@ void loop(){
 
     switch(systemState){
 
-      case SystemState::setup:
+      case SystemState::boardSetup:
 
         setupChessPiecesRoutine();
 
